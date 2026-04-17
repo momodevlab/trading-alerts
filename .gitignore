@@ -1,0 +1,28 @@
+# Secrets — never commit
+.env
+.env.*
+
+# Data caches — regenerated at runtime
+data/cot/
+data/economic/
+data/sessions/
+data/reports/
+data/alerts_log.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

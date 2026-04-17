@@ -1,0 +1,9 @@
+yfinance
+pandas
+numpy
+requests
+python-dotenv
+schedule
+beautifulsoup4
+python-telegram-bot>=20.0
+aiohttp

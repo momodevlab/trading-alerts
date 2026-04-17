@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//private/tmp/**)",
+      "WebSearch",
+      "Bash(python -c \"from alerts.strategy_engine import FuturesStrategy, ForexStrategy, format_strategy_entry_alert, format_tp1_hit_alert, format_tp2_hit_alert, format_trail_stop_hit_alert, format_trail_updated_alert; print\\('strategy_engine OK'\\)\")",
+      "Bash(python3 -c \"from alerts.strategy_engine import FuturesStrategy, ForexStrategy, format_strategy_entry_alert, format_tp1_hit_alert, format_tp2_hit_alert, format_trail_stop_hit_alert, format_trail_updated_alert; print\\('strategy_engine OK'\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"from alerts.strategy_engine import FuturesStrategy, ForexStrategy, StrategySignal, _calc_multi_bar_indicators; print\\('strategy_engine OK'\\)\")"
+    ]
+  }
+}

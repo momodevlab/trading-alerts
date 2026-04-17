@@ -1,0 +1,6135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Research Dashboard</title>
+<style>
+  :root {
+    --bg:     #f0f2f6;
+    --bg2:    #ffffff;
+    --bg3:    #f8f9fb;
+    --bg4:    #eef0f5;
+    --border: #dde1ea;
+    --text:   #1a202c;
+    --text2:  #64748b;
+    --text3:  #1e40af;
+    --blue:   #1d4ed8;
+    --blue2:  #1e3a8a;
+    --red:    #dc2626;
+    --red2:   #7f1d1d;
+    --green:  #059669;
+    --yellow: #d97706;
+    --purple: #7c3aed;
+    /* bias palette */
+    --vbull: #1e3a8a;
+    --bull:  #1d4ed8;
+    --neut:  #64748b;
+    --bear:  #dc2626;
+    --vbear: #7f1d1d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* Header */
+  #header { display: flex; align-items: center; gap: 16px; padding: 0 16px; height: 46px; background: #1e2a3a; border-bottom: none; position: sticky; top: 0; z-index: 100; }
+  #clock { font-size: 13px; font-weight: 600; color: #e2e8f0; min-width: 140px; }
+  #refresh-info { color: #94a3b8; font-size: 11px; }
+  .pulse { width: 7px; height: 7px; background: #34d399; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #header-title { font-size: 15px; font-weight: 700; color: #f1f5f9; flex: 1; letter-spacing: -0.2px; }
+
+  /* Layout */
+  .main  { display: grid; grid-template-columns: 1fr 360px; height: calc(100vh - 46px); }
+  .left  { height: 100%; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .right { height: 100%; overflow-y: auto; padding: 14px; background: var(--bg3); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
+
+  /* Cards */
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); flex-shrink: 0; }
+  .card-header { padding: 10px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-header h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text2); }
+  .card-body { padding: 14px; }
+
+  /* Filter pills */
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .pill { padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); cursor: pointer; font-size: 11px; font-weight: 500; transition: all .15s; }
+  .pill:hover { border-color: var(--blue); color: var(--blue); }
+  .pill.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .pill.vbull.active { background: var(--vbull); border-color: var(--vbull); }
+  .pill.bull.active  { background: var(--bull);  border-color: var(--bull); }
+  .pill.bear.active  { background: var(--bear);  border-color: var(--bear); }
+  .pill.vbear.active { background: var(--vbear); border-color: var(--vbear); }
+
+  /* Watchlist table */
+  .wl-table { width: 100%; border-collapse: collapse; }
+  .wl-table th { padding: 8px 8px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text2); background: var(--bg3); border-bottom: 2px solid var(--border); white-space: nowrap; }
+  .wl-table th:first-child, .wl-table th:nth-child(2), .wl-table th:nth-child(3) { text-align: left; }
+  .wl-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; white-space: nowrap; text-align: center; }
+  .wl-table td:first-child, .wl-table td:nth-child(2), .wl-table td:nth-child(3) { text-align: left; }
+  .wl-table tr:hover td { background: #eff6ff; }
+  .wl-table tr.selected td { background: #dbeafe; }
+  .sym { font-weight: 700; color: var(--text); font-size: 13px; }
+  .price-cell { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+  .change-pos { color: var(--green); font-weight: 600; }
+  .change-neg { color: var(--red); font-weight: 600; }
+
+  /* Signal cells — colored number boxes like EdgeFinder */
+  .sig-cell { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 20px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+  .sig-cell.pos2 { background: #1d4ed8; color: #fff; }
+  .sig-cell.pos1 { background: #93c5fd; color: #1e3a8a; }
+  .sig-cell.zero { background: #e2e8f0; color: #94a3b8; }
+  .sig-cell.neg1 { background: #fca5a5; color: #7f1d1d; }
+  .sig-cell.neg2 { background: #dc2626; color: #fff; }
+
+  /* Bias badge */
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+  .badge.vbull { background: #dbeafe; color: #1e3a8a; }
+  .badge.bull  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge.neut  { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+  .badge.bear  { background: #fff1f2; color: #dc2626; border: 1px solid #fecaca; }
+  .badge.vbear { background: #fee2e2; color: #7f1d1d; }
+
+  .score-num { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .score-pos { color: var(--blue); }
+  .score-neg { color: var(--red); }
+  .score-0   { color: var(--text2); }
+
+  /* IV rank */
+  .iv-high   { color: var(--red);    font-weight: 600; }
+  .iv-medium { color: var(--yellow); font-weight: 600; }
+  .iv-low    { color: var(--green);  font-weight: 600; }
+
+  /* Intraday panel */
+  #intraday-panel { display: none; }
+  #intraday-panel.open { display: block; }
+  #intraday-panel .card-header { position: sticky; top: 0; z-index: 10; }
+  #intraday-panel .card-body { max-height: calc(100vh - 160px); overflow-y: auto; }
+  #levels-list { max-height: 340px; overflow-y: auto; }
+  .level-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .level-row:hover { background: #eff6ff; }
+  .level-label { font-weight: 700; min-width: 110px; font-size: 11px; color: var(--text2); }
+  .level-price { font-variant-numeric: tabular-nums; flex: 1; font-weight: 600; }
+  .level-dist  { color: var(--text2); font-size: 11px; min-width: 60px; text-align: right; }
+  .level-role  { font-size: 10px; color: var(--text2); min-width: 80px; }
+  .level-sup   { border-left: 3px solid var(--green); padding-left: 6px; }
+  .level-res   { border-left: 3px solid var(--red); padding-left: 6px; }
+  .level-piv   { border-left: 3px solid var(--blue); padding-left: 6px; }
+  .level-hot   { background: #eff6ff; }
+  .hot-star    { color: var(--blue); font-size: 11px; }
+
+  /* Entry planner */
+  .planner { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .planner input { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 7px 8px; border-radius: 5px; font-family: inherit; font-size: 12px; width: 100%; }
+  .planner input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px #bfdbfe; }
+  .planner label { font-size: 10px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .rr-display { margin-top: 8px; padding: 10px; background: var(--bg3); border-radius: 6px; font-size: 12px; border: 1px solid var(--border); }
+  .planner-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .btn { padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg3); color: var(--text); cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; transition: all .15s; }
+  .btn:hover { background: var(--bg4); border-color: var(--blue); color: var(--blue); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn.primary:hover { background: var(--blue2); }
+
+  /* Technical signals */
+  .tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tech-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; border: 1px solid var(--border); }
+  .tech-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text2); }
+  .tech-value { font-size: 13px; font-weight: 700; margin-top: 2px; }
+
+  /* Sentiment strip */
+  .sentiment-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .sentiment-item { flex: 1; min-width: 80px; text-align: center; padding: 10px 8px; background: var(--bg3); border-radius: 6px; border: 1px solid var(--border); }
+  .sentiment-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text2); margin-bottom: 4px; }
+  .sentiment-value { font-size: 18px; font-weight: 800; color: var(--text); }
+  .gauge { height: 5px; background: var(--border); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+
+  /* COT section */
+  .cot-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .cot-symbol { font-weight: 700; min-width: 68px; font-size: 12px; }
+  .cot-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; margin: 0 10px; overflow: hidden; position: relative; }
+  .cot-fill { height: 100%; border-radius: 3px; position: absolute; top: 0; }
+  .cot-fill.bull { background: var(--blue); left: 50%; }
+  .cot-fill.bear { background: var(--red); right: 50%; }
+  .cot-net { min-width: 60px; text-align: right; font-size: 11px; font-weight: 700; }
+
+  /* Economic heat map */
+  .eco-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .eco-name { flex: 1; color: var(--text); font-weight: 500; }
+  .eco-actual { font-weight: 700; min-width: 50px; text-align: right; }
+  .eco-fore   { color: var(--text2); min-width: 50px; text-align: right; }
+  .eco-beat   { color: var(--green); }
+  .eco-miss   { color: var(--red); }
+  .eco-inline { color: var(--text2); }
+  .eco-inv-beat { color: var(--red); }
+  .eco-inv-miss { color: var(--green); }
+
+  /* Claude buttons */
+  .claude-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .claude-btn { padding: 11px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 600; text-align: center; transition: all .15s; }
+  .claude-btn:hover { background: #eff6ff; border-color: var(--blue); color: var(--blue); }
+
+  /* Timeframe selector */
+  .tf-pills { display: flex; gap: 4px; }
+  .tf-pill { padding: 3px 9px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 500; }
+  .tf-pill.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+
+  /* Section title */
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); padding: 6px 0; border-bottom: 2px solid var(--border); margin-bottom: 10px; }
+
+  /* Options snapshot */
+  .opt-card { background: var(--bg3); border-radius: 6px; padding: 10px; margin-top: 10px; font-size: 11px; border: 1px solid var(--border); }
+  .opt-row { display: flex; justify-content: space-between; padding: 3px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg3); }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; height: auto; }
+    .right { border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <span class="pulse"></span>
+  <div id="clock">—</div>
+  <div id="header-title">Trading Research Dashboard</div>
+  <div id="refresh-info">Refreshing every 60s</div>
+</div>
+
+<div class="main">
+<!-- LEFT: Watchlist + Intraday Panel -->
+<div class="left">
+
+  <!-- Watchlist Card -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Watchlist</h3>
+      <div class="tf-pills">
+        <button class="tf-pill active" onclick="setTF('5m')">5m</button>
+        <button class="tf-pill" onclick="setTF('15m')">15m</button>
+        <button class="tf-pill" onclick="setTF('1h')">1h</button>
+        <button class="tf-pill" onclick="setTF('D')">D</button>
+      </div>
+    </div>
+    <div class="pills">
+      <button class="pill active" onclick="filterWL('all',this)">All</button>
+      <button class="pill vbull" onclick="filterWL('vbull',this)">Very Bullish</button>
+      <button class="pill bull"  onclick="filterWL('bull',this)">Bullish</button>
+      <button class="pill"       onclick="filterWL('neut',this)">Neutral</button>
+      <button class="pill bear"  onclick="filterWL('bear',this)">Bearish</button>
+      <button class="pill vbear" onclick="filterWL('vbear',this)">Very Bearish</button>
+      <button class="pill" onclick="filterWL('indices',this)">Indices</button>
+      <button class="pill" onclick="filterWL('metals',this)">Metals</button>
+      <button class="pill" onclick="filterWL('commodities',this)">Commodities</button>
+      <button class="pill" onclick="filterWL('stocks',this)">Stocks</button>
+      <button class="pill" onclick="filterWL('forex-major',this)">Forex Major</button>
+      <button class="pill" onclick="filterWL('forex-minor',this)">Forex Minor</button>
+      <button class="pill" onclick="filterWL('reference',this)">Reference</button>
+    </div>
+    <table class="wl-table" id="watchlist-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Price</th>
+          <th>Chg%</th>
+          <th>Score</th>
+          <th>Bias</th>
+          <th>TEC</th><th>COT</th><th>RET</th><th>SEA</th><th>ECO</th><th>P/C</th><th>MOM</th>
+          <th>IV</th>
+        </tr>
+      </thead>
+      <tbody id="watchlist-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Intraday Panel -->
+  <div id="intraday-panel" class="card">
+    <div class="card-header">
+      <h3 id="intraday-title">— Intraday</h3>
+      <button class="btn" onclick="closeIntraday()">✕ Close</button>
+    </div>
+    <div class="card-body">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+
+        <!-- Price ladder / levels -->
+        <div>
+          <div class="section-title">S/R Levels</div>
+          <div id="levels-list"></div>
+        </div>
+
+        <!-- Entry planner + tech signals -->
+        <div>
+          <div class="section-title">Entry / Exit Planner</div>
+          <div class="planner">
+            <div>
+              <label>Entry</label>
+              <input type="number" id="p-entry" placeholder="0" oninput="calcRR()">
+            </div>
+            <div>
+              <label>Stop</label>
+              <input type="number" id="p-stop" placeholder="0" oninput="calcRR()">
+            </div>
+            <div>
+              <label>Target</label>
+              <input type="number" id="p-target" placeholder="0" oninput="calcRR()">
+            </div>
+          </div>
+          <div class="rr-display" id="rr-display">
+            Enter entry, stop, and target to calculate R:R
+          </div>
+          <div class="planner-btns">
+            <button class="btn" onclick="loadPreset('break_retest')">Break &amp; Retest</button>
+            <button class="btn" onclick="loadPreset('fade')">Fade</button>
+          </div>
+
+          <div class="section-title" style="margin-top:12px;">Technical Signals</div>
+          <div class="tech-grid" id="tech-signals"></div>
+
+          <div class="section-title" style="margin-top:12px;">Session Levels</div>
+          <div id="session-levels-block"></div>
+
+          <!-- Options snapshot (stocks only) -->
+          <div id="options-snapshot" style="display:none;">
+            <div class="section-title" style="margin-top:12px;">Options Snapshot</div>
+            <div class="opt-card" id="opt-card-content"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .left -->
+
+<!-- RIGHT: Sentiment, COT, Economic, Claude buttons -->
+<div class="right">
+
+  <!-- Sentiment strip -->
+  <div class="card">
+    <div class="card-header"><h3>Sentiment</h3></div>
+    <div class="card-body">
+      <div class="sentiment-row">
+        <div class="sentiment-item">
+          <div class="sentiment-label">Put/Call</div>
+          <div class="sentiment-value" id="pc-ratio">—</div>
+          <div style="font-size:10px;color:var(--text2)" id="pc-label">—</div>
+          <div class="gauge"><div class="gauge-fill" id="pc-gauge" style="width:50%;background:var(--text2)"></div></div>
+        </div>
+        <div class="sentiment-item">
+          <div class="sentiment-label">AAII Bull</div>
+          <div class="sentiment-value" id="aaii-bull">—</div>
+          <div class="gauge"><div class="gauge-fill" id="aaii-bull-gauge" style="width:0%;background:var(--green)"></div></div>
+        </div>
+        <div class="sentiment-item">
+          <div class="sentiment-label">AAII Bear</div>
+          <div class="sentiment-value" id="aaii-bear">—</div>
+          <div class="gauge"><div class="gauge-fill" id="aaii-bear-gauge" style="width:0%;background:var(--red)"></div></div>
+        </div>
+        <div class="sentiment-item">
+          <div class="sentiment-label">BTC/Gold</div>
+          <div class="sentiment-value" id="btc-gold">—</div>
+          <div style="font-size:10px;color:var(--text2)" id="btc-gold-label">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COT section -->
+  <div class="card">
+    <div class="card-header"><h3>COT — Institutional Positioning</h3></div>
+    <div class="card-body" id="cot-section"></div>
+  </div>
+
+  <!-- Economic heat map -->
+  <div class="card">
+    <div class="card-header"><h3>Economic Heat Map — US</h3></div>
+    <div class="card-body" id="eco-heatmap"></div>
+  </div>
+
+  <!-- Analysis buttons -->
+  <div class="card">
+    <div class="card-header"><h3>Analysis</h3></div>
+    <div class="card-body">
+      <div class="claude-grid">
+        <button class="claude-btn" onclick="showFuturesScan()">📊 Futures Scan</button>
+        <button class="claude-btn" onclick="showDailyBias()">📈 Daily Bias</button>
+        <button class="claude-btn" onclick="showBestEntry()">🎯 Best Entry</button>
+        <button class="claude-btn" onclick="showCOTDetail()">📋 COT Detail</button>
+      </div>
+      <div id="selected-symbol-actions" style="display:none; margin-top:10px;">
+        <div class="section-title">Selected: <span id="selected-for-action">—</span></div>
+        <div class="claude-grid" style="margin-top:6px;">
+          <button class="claude-btn" onclick="showFullAnalysis(selectedSymbol)">🔬 Full Analysis</button>
+          <button class="claude-btn" onclick="showSRLevels(selectedSymbol)">📏 S/R Levels</button>
+          <button class="claude-btn" onclick="showQuickSnap(selectedSymbol)">⚡ Quick Snap</button>
+          <button class="claude-btn" onclick="showScoreBreakdown(selectedSymbol)">🎯 Score Detail</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .right -->
+</div><!-- end .main -->
+
+<script>
+// ============================================================
+// DATA — injected by scripts/refresh_dashboard.py
+// Initial placeholders: realistic April 2026 values
+// ============================================================
+
+/* LIVE_DATA_INJECT */
+const LIVE_DATA = {
+  "updated": "2026-04-15 13:30 ET",
+  "prices": {
+    "MSFT": {
+      "price": 409.81,
+      "prev": null,
+      "change_pct": null,
+      "source": "tradingview_active_chart"
+    },
+    "MES": {
+      "price": 7035.75,
+      "prev": 7004.75,
+      "change_pct": 0.44,
+      "source": "yfinance"
+    },
+    "MNQ": {
+      "price": 26179.5,
+      "prev": 25996.75,
+      "change_pct": 0.7,
+      "source": "yfinance"
+    },
+    "MYM": {
+      "price": 48577.0,
+      "prev": 48755.0,
+      "change_pct": -0.37,
+      "source": "yfinance"
+    },
+    "MCL": {
+      "price": 91.62,
+      "prev": 91.28,
+      "change_pct": 0.37,
+      "source": "yfinance"
+    },
+    "MGC": {
+      "price": 4823.2998,
+      "prev": 4825.0,
+      "change_pct": -0.04,
+      "source": "yfinance"
+    },
+    "MSI": {
+      "price": 79.37,
+      "prev": 79.391,
+      "change_pct": -0.03,
+      "source": "yfinance"
+    },
+    "MNG": {
+      "price": 2.604,
+      "prev": 2.599,
+      "change_pct": 0.19,
+      "source": "yfinance"
+    },
+    "M2K": {
+      "price": 2713.3,
+      "prev": 2718.1001,
+      "change_pct": -0.18,
+      "source": "yfinance"
+    },
+    "ES": {
+      "price": 7035.75,
+      "prev": 7004.75,
+      "change_pct": 0.44,
+      "source": "yfinance"
+    },
+    "NQ": {
+      "price": 26179.25,
+      "prev": 25996.75,
+      "change_pct": 0.7,
+      "source": "yfinance"
+    },
+    "YM": {
+      "price": 48577.0,
+      "prev": 48755.0,
+      "change_pct": -0.37,
+      "source": "yfinance"
+    },
+    "CL": {
+      "price": 91.62,
+      "prev": 91.28,
+      "change_pct": 0.37,
+      "source": "yfinance"
+    },
+    "GC": {
+      "price": 4823.2998,
+      "prev": 4825.0,
+      "change_pct": -0.04,
+      "source": "yfinance"
+    },
+    "SI": {
+      "price": 79.37,
+      "prev": 79.391,
+      "change_pct": -0.03,
+      "source": "yfinance"
+    },
+    "NG": {
+      "price": 2.604,
+      "prev": 2.599,
+      "change_pct": 0.19,
+      "source": "yfinance"
+    },
+    "SPY": {
+      "price": 697.48,
+      "prev": 694.46,
+      "change_pct": 0.43,
+      "source": "yfinance"
+    },
+    "QQQ": {
+      "price": 633.11,
+      "prev": 628.6,
+      "change_pct": 0.72,
+      "source": "yfinance"
+    },
+    "AAPL": {
+      "price": 264.9706,
+      "prev": 258.83,
+      "change_pct": 2.37,
+      "source": "yfinance"
+    },
+    "NVDA": {
+      "price": 197.035,
+      "prev": 196.51,
+      "change_pct": 0.27,
+      "source": "yfinance"
+    },
+    "TSLA": {
+      "price": 387.125,
+      "prev": 364.2,
+      "change_pct": 6.29,
+      "source": "yfinance"
+    },
+    "EURUSD": {
+      "price": 1.1804,
+      "prev": 1.1769,
+      "change_pct": 0.3,
+      "source": "yfinance"
+    },
+    "GBPUSD": {
+      "price": 1.3571,
+      "prev": 1.3515,
+      "change_pct": 0.41,
+      "source": "yfinance"
+    },
+    "USDJPY": {
+      "price": 158.976,
+      "prev": 159.214,
+      "change_pct": -0.15,
+      "source": "yfinance"
+    },
+    "USDCHF": {
+      "price": 0.7817,
+      "prev": 0.7832,
+      "change_pct": -0.19,
+      "source": "yfinance"
+    },
+    "AUDUSD": {
+      "price": 0.7166,
+      "prev": 0.7099,
+      "change_pct": 0.94,
+      "source": "yfinance"
+    },
+    "NZDUSD": {
+      "price": 0.5913,
+      "prev": 0.5872,
+      "change_pct": 0.69,
+      "source": "yfinance"
+    },
+    "USDCAD": {
+      "price": 1.3736,
+      "prev": 1.3785,
+      "change_pct": -0.36,
+      "source": "yfinance"
+    },
+    "EURGBP": {
+      "price": 0.8694,
+      "prev": 0.8704,
+      "change_pct": -0.11,
+      "source": "yfinance"
+    },
+    "GBPJPY": {
+      "price": 215.744,
+      "prev": 215.186,
+      "change_pct": 0.26,
+      "source": "yfinance"
+    },
+    "EURCHF": {
+      "price": 0.9224,
+      "prev": 0.9215,
+      "change_pct": 0.09,
+      "source": "yfinance"
+    },
+    "CADJPY": {
+      "price": 115.736,
+      "prev": 115.48,
+      "change_pct": 0.22,
+      "source": "yfinance"
+    },
+    "AUDNZD": {
+      "price": 1.2122,
+      "prev": 1.209,
+      "change_pct": 0.26,
+      "source": "yfinance"
+    },
+    "NZDJPY": {
+      "price": 93.956,
+      "prev": 93.466,
+      "change_pct": 0.52,
+      "source": "yfinance"
+    },
+    "GBPAUD": {
+      "price": 1.8939,
+      "prev": 1.9036,
+      "change_pct": -0.51,
+      "source": "yfinance"
+    },
+    "NZDCAD": {
+      "price": 0.8118,
+      "prev": 0.8094,
+      "change_pct": 0.3,
+      "source": "yfinance"
+    }
+  },
+  "scores": {
+    "MES": {
+      "TEC": 2,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "MNQ": {
+      "TEC": 2,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "MYM": {
+      "TEC": 1,
+      "COT": -1,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "MCL": {
+      "TEC": -2,
+      "COT": 2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "MGC": {
+      "TEC": 1,
+      "COT": 1,
+      "RET": 0,
+      "SEA": -1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "MSI": {
+      "TEC": 1,
+      "COT": 1,
+      "RET": 0,
+      "SEA": -1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "MNG": {
+      "TEC": 1,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -1,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "M2K": {
+      "TEC": 1,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": 0,
+      "bias": "Neutral"
+    },
+    "ES": {
+      "TEC": 2,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "NQ": {
+      "TEC": 2,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "YM": {
+      "TEC": 1,
+      "COT": -1,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "CL": {
+      "TEC": -2,
+      "COT": 2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 1,
+      "bias": "Neutral"
+    },
+    "GC": {
+      "TEC": 1,
+      "COT": 1,
+      "RET": 0,
+      "SEA": -1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "SI": {
+      "TEC": 1,
+      "COT": 1,
+      "RET": 0,
+      "SEA": -1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "NG": {
+      "TEC": 1,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 1,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -1,
+      "total": -1,
+      "bias": "Neutral"
+    },
+    "SPY": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 2,
+      "bias": "Neutral"
+    },
+    "QQQ": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 2,
+      "bias": "Neutral"
+    },
+    "AAPL": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 2,
+      "total": 4,
+      "bias": "Neutral"
+    },
+    "NVDA": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": -2,
+      "total": 0,
+      "bias": "Neutral"
+    },
+    "TSLA": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 2,
+      "bias": "Neutral"
+    },
+    "MSFT": {
+      "TEC": 2,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0,
+      "total": 2,
+      "bias": "Neutral"
+    },
+    "EURUSD": {
+      "total": 1,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 1,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "GBPUSD": {
+      "total": 1,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 1,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "USDJPY": {
+      "total": -2,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": -2,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "USDCHF": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "AUDUSD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "NZDUSD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "USDCAD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "EURGBP": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "EURJPY": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "GBPJPY": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "EURCHF": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "AUDCAD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "CADJPY": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "AUDNZD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "NZDJPY": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "GBPAUD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    },
+    "NZDCAD": {
+      "total": 0,
+      "bias": "Neutral",
+      "TEC": 0,
+      "COT": 0,
+      "RET": 0,
+      "SEA": 0,
+      "ECO": 0,
+      "PC": 0,
+      "MOM": 0
+    }
+  },
+  "cot": {
+    "GBPUSD": {
+      "report_date": "2026-04-07",
+      "longs": 55779,
+      "shorts": 29246,
+      "net": 26533,
+      "prev_longs": 58402,
+      "prev_shorts": 28470,
+      "prev_net": 29932,
+      "net_change": -3399,
+      "long_change": -2623,
+      "short_change": 776,
+      "score": 1
+    },
+    "USDJPY": {
+      "report_date": "2026-04-07",
+      "longs": 76763,
+      "shorts": 127873,
+      "net": -51110,
+      "prev_longs": 77232,
+      "prev_shorts": 123414,
+      "prev_net": -46182,
+      "net_change": -4928,
+      "long_change": -469,
+      "short_change": 4459,
+      "score": -2
+    },
+    "EURUSD": {
+      "report_date": "2026-04-07",
+      "longs": 104662,
+      "shorts": 103780,
+      "net": 882,
+      "prev_longs": 106291,
+      "prev_shorts": 102344,
+      "prev_net": 3947,
+      "net_change": -3065,
+      "long_change": -1629,
+      "short_change": 1436,
+      "score": 1
+    },
+    "YM": {
+      "report_date": "2026-04-07",
+      "longs": 8684,
+      "shorts": 16090,
+      "net": -7406,
+      "prev_longs": 8264,
+      "prev_shorts": 15910,
+      "prev_net": -7646,
+      "net_change": 240,
+      "long_change": 420,
+      "short_change": 180,
+      "score": -1
+    },
+    "ES": {
+      "report_date": "2026-04-07",
+      "longs": 148276,
+      "shorts": 392759,
+      "net": -244483,
+      "prev_longs": 163425,
+      "prev_shorts": 396837,
+      "prev_net": -233412,
+      "net_change": -11071,
+      "long_change": -15149,
+      "short_change": -4078,
+      "score": -2
+    },
+    "NQ": {
+      "report_date": "2026-04-07",
+      "longs": 47521,
+      "shorts": 86349,
+      "net": -38828,
+      "prev_longs": 47382,
+      "prev_shorts": 84485,
+      "prev_net": -37103,
+      "net_change": -1725,
+      "long_change": 139,
+      "short_change": 1864,
+      "score": -2
+    },
+    "NG": {
+      "report_date": "2026-04-07",
+      "longs": 157461,
+      "shorts": 243494,
+      "net": -86033,
+      "prev_longs": 149348,
+      "prev_shorts": 216964,
+      "prev_net": -67616,
+      "net_change": -18417,
+      "long_change": 8113,
+      "short_change": 26530,
+      "score": -2
+    },
+    "CL": {
+      "report_date": "2026-04-07",
+      "longs": 186768,
+      "shorts": 108068,
+      "net": 78700,
+      "prev_longs": 177780,
+      "prev_shorts": 104433,
+      "prev_net": 73347,
+      "net_change": 5353,
+      "long_change": 8988,
+      "short_change": 3635,
+      "score": 2
+    },
+    "SI": {
+      "report_date": "2026-04-07",
+      "longs": 13838,
+      "shorts": 3440,
+      "net": 10398,
+      "prev_longs": 14917,
+      "prev_shorts": 3651,
+      "prev_net": 11266,
+      "net_change": -868,
+      "long_change": -1079,
+      "short_change": -211,
+      "score": 1
+    },
+    "GC": {
+      "report_date": "2026-04-07",
+      "longs": 120726,
+      "shorts": 30694,
+      "net": 90032,
+      "prev_longs": 120092,
+      "prev_shorts": 27278,
+      "prev_net": 92814,
+      "net_change": -2782,
+      "long_change": 634,
+      "short_change": 3416,
+      "score": 1
+    }
+  },
+  "eco": {
+    "score": 0,
+    "indicators": []
+  },
+  "levels": {
+    "MES": [
+      {
+        "price": 7008.25,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 27.5,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 6920.25,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 115.5,
+        "role": "support"
+      },
+      {
+        "price": 7004.75,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 31.0,
+        "role": "pivot"
+      },
+      {
+        "price": 6964.25,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 71.5,
+        "role": "midpoint"
+      },
+      {
+        "price": 7009.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 26.75,
+        "role": "day open"
+      },
+      {
+        "price": 7024.75,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 11.0,
+        "role": "IB high"
+      },
+      {
+        "price": 7003.75,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 32.0,
+        "role": "IB low"
+      },
+      {
+        "price": 7018.75,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 17.0,
+        "role": "overnight high"
+      },
+      {
+        "price": 6992.0,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 43.75,
+        "role": "overnight low"
+      },
+      {
+        "price": 6860.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 175.75,
+        "role": "weekly open"
+      },
+      {
+        "price": 7040.25,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 4.5,
+        "role": "weekly high"
+      },
+      {
+        "price": 6767.25,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 268.5,
+        "role": "weekly low"
+      },
+      {
+        "price": 6610.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 425.75,
+        "role": "monthly open"
+      }
+    ],
+    "MNQ": [
+      {
+        "price": 26005.25,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 174.25,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 25559.5,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 620.0,
+        "role": "support"
+      },
+      {
+        "price": 25996.75,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 182.75,
+        "role": "pivot"
+      },
+      {
+        "price": 25782.375,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 397.125,
+        "role": "midpoint"
+      },
+      {
+        "price": 26018.25,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 161.25,
+        "role": "day open"
+      },
+      {
+        "price": 26078.25,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 101.25,
+        "role": "IB high"
+      },
+      {
+        "price": 25982.75,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 196.75,
+        "role": "IB low"
+      },
+      {
+        "price": 26058.25,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 121.25,
+        "role": "overnight high"
+      },
+      {
+        "price": 25934.5,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 245.0,
+        "role": "overnight low"
+      },
+      {
+        "price": 25242.25,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 937.25,
+        "role": "weekly open"
+      },
+      {
+        "price": 26252.75,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 73.25,
+        "role": "weekly high"
+      },
+      {
+        "price": 24914.5,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1265.0,
+        "role": "weekly low"
+      },
+      {
+        "price": 24287.75,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1891.75,
+        "role": "monthly open"
+      }
+    ],
+    "MYM": [
+      {
+        "price": 48808.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 231.0,
+        "role": "resistance"
+      },
+      {
+        "price": 48344.0,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 233.0,
+        "role": "support"
+      },
+      {
+        "price": 48755.0,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 178.0,
+        "role": "pivot"
+      },
+      {
+        "price": 48576.0,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 1.0,
+        "role": "midpoint"
+      },
+      {
+        "price": 48765.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 188.0,
+        "role": "day open"
+      },
+      {
+        "price": 48910.0,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 333.0,
+        "role": "IB high"
+      },
+      {
+        "price": 48609.0,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 32.0,
+        "role": "IB low"
+      },
+      {
+        "price": 48858.0,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 281.0,
+        "role": "overnight high"
+      },
+      {
+        "price": 48664.0,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 87.0,
+        "role": "overnight low"
+      },
+      {
+        "price": 48416.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 161.0,
+        "role": "weekly open"
+      },
+      {
+        "price": 48910.0,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 333.0,
+        "role": "weekly high"
+      },
+      {
+        "price": 47534.0,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1043.0,
+        "role": "weekly low"
+      },
+      {
+        "price": 46406.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 2171.0,
+        "role": "monthly open"
+      }
+    ],
+    "MCL": [
+      {
+        "price": 98.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 6.38,
+        "role": "resistance"
+      },
+      {
+        "price": 91.05999755859375,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.56,
+        "role": "support"
+      },
+      {
+        "price": 91.27999877929688,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.34,
+        "role": "pivot"
+      },
+      {
+        "price": 94.53,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 2.91,
+        "role": "midpoint"
+      },
+      {
+        "price": 90.94999694824219,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.67,
+        "role": "day open"
+      },
+      {
+        "price": 91.55000305175781,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.07,
+        "role": "IB high"
+      },
+      {
+        "price": 90.4000015258789,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1.22,
+        "role": "IB low"
+      },
+      {
+        "price": 93.30000305175781,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 1.68,
+        "role": "overnight high"
+      },
+      {
+        "price": 90.30000305175781,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 1.32,
+        "role": "overnight low"
+      },
+      {
+        "price": 98.2300033569336,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 6.61,
+        "role": "weekly open"
+      },
+      {
+        "price": 105.62999725341797,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 14.01,
+        "role": "weekly high"
+      },
+      {
+        "price": 86.95999908447266,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 4.66,
+        "role": "weekly low"
+      },
+      {
+        "price": 100.93000030517578,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 9.31,
+        "role": "monthly open"
+      }
+    ],
+    "MGC": [
+      {
+        "price": 4841.60009765625,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 18.3003,
+        "role": "resistance"
+      },
+      {
+        "price": 4770.10009765625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 53.1997,
+        "role": "support"
+      },
+      {
+        "price": 4825.0,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1.7002,
+        "role": "pivot"
+      },
+      {
+        "price": 4805.8501,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 17.4497,
+        "role": "midpoint"
+      },
+      {
+        "price": 4848.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 24.7002,
+        "role": "day open"
+      },
+      {
+        "price": 4853.5,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 30.2002,
+        "role": "IB high"
+      },
+      {
+        "price": 4838.2998046875,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 15.0,
+        "role": "IB low"
+      },
+      {
+        "price": 4854.2998046875,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 31.0,
+        "role": "overnight high"
+      },
+      {
+        "price": 4808.39990234375,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 14.8999,
+        "role": "overnight low"
+      },
+      {
+        "price": 4745.89990234375,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 77.3999,
+        "role": "weekly open"
+      },
+      {
+        "price": 4895.39990234375,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 72.1001,
+        "role": "weekly high"
+      },
+      {
+        "price": 4704.0,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 119.2998,
+        "role": "weekly low"
+      },
+      {
+        "price": 5001.60009765625,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 178.3003,
+        "role": "monthly open"
+      }
+    ],
+    "MSI": [
+      {
+        "price": 79.58999633789062,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.22,
+        "role": "resistance"
+      },
+      {
+        "price": 76.81500244140625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 2.555,
+        "role": "support"
+      },
+      {
+        "price": 79.39099884033203,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.021,
+        "role": "pivot"
+      },
+      {
+        "price": 78.2025,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 1.1675,
+        "role": "midpoint"
+      },
+      {
+        "price": 79.93000030517578,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.56,
+        "role": "day open"
+      },
+      {
+        "price": 80.22000122070312,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.85,
+        "role": "IB high"
+      },
+      {
+        "price": 79.33999633789062,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.03,
+        "role": "IB low"
+      },
+      {
+        "price": 80.05999755859375,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.69,
+        "role": "overnight high"
+      },
+      {
+        "price": 78.30500030517578,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 1.065,
+        "role": "overnight low"
+      },
+      {
+        "price": 75.30500030517578,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 4.065,
+        "role": "weekly open"
+      },
+      {
+        "price": 81.15499877929688,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 1.785,
+        "role": "weekly high"
+      },
+      {
+        "price": 72.79499816894531,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 6.575,
+        "role": "weekly low"
+      },
+      {
+        "price": 79.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.37,
+        "role": "monthly open"
+      }
+    ],
+    "MNG": [
+      {
+        "price": 2.6600000858306885,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.056,
+        "role": "resistance"
+      },
+      {
+        "price": 2.561000108718872,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.043,
+        "role": "support"
+      },
+      {
+        "price": 2.5989999771118164,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.005,
+        "role": "pivot"
+      },
+      {
+        "price": 2.6105,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0065,
+        "role": "midpoint"
+      },
+      {
+        "price": 2.5880000591278076,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.016,
+        "role": "day open"
+      },
+      {
+        "price": 2.6029999256134033,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.001,
+        "role": "IB high"
+      },
+      {
+        "price": 2.5869998931884766,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.017,
+        "role": "IB low"
+      },
+      {
+        "price": 2.624000072479248,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.02,
+        "role": "overnight high"
+      },
+      {
+        "price": 2.569999933242798,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.034,
+        "role": "overnight low"
+      },
+      {
+        "price": 2.6710000038146973,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.067,
+        "role": "weekly open"
+      },
+      {
+        "price": 2.7230000495910645,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.119,
+        "role": "weekly high"
+      },
+      {
+        "price": 2.561000108718872,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.043,
+        "role": "weekly low"
+      },
+      {
+        "price": 3.180000066757202,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.576,
+        "role": "monthly open"
+      }
+    ],
+    "M2K": [
+      {
+        "price": 2726.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 12.7,
+        "role": "resistance"
+      },
+      {
+        "price": 2684.10009765625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 29.1999,
+        "role": "support"
+      },
+      {
+        "price": 2718.10009765625,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 4.8001,
+        "role": "pivot"
+      },
+      {
+        "price": 2705.05,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 8.25,
+        "role": "midpoint"
+      },
+      {
+        "price": 2716.5,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 3.2,
+        "role": "day open"
+      },
+      {
+        "price": 2727.39990234375,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 14.0999,
+        "role": "IB high"
+      },
+      {
+        "price": 2713.10009765625,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.1999,
+        "role": "IB low"
+      },
+      {
+        "price": 2721.199951171875,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 7.9,
+        "role": "overnight high"
+      },
+      {
+        "price": 2710.39990234375,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 2.9001,
+        "role": "overnight low"
+      },
+      {
+        "price": 2649.699951171875,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 63.6,
+        "role": "weekly open"
+      },
+      {
+        "price": 2727.39990234375,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 14.0999,
+        "role": "weekly high"
+      },
+      {
+        "price": 2591.800048828125,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 121.5,
+        "role": "weekly low"
+      },
+      {
+        "price": 2468.5,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 244.8,
+        "role": "monthly open"
+      }
+    ],
+    "ES": [
+      {
+        "price": 7008.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 27.75,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 6920.25,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 115.5,
+        "role": "support"
+      },
+      {
+        "price": 7004.75,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 31.0,
+        "role": "pivot"
+      },
+      {
+        "price": 6964.125,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 71.625,
+        "role": "midpoint"
+      },
+      {
+        "price": 7008.75,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 27.0,
+        "role": "day open"
+      },
+      {
+        "price": 7024.75,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 11.0,
+        "role": "IB high"
+      },
+      {
+        "price": 7004.0,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 31.75,
+        "role": "IB low"
+      },
+      {
+        "price": 7018.0,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 17.75,
+        "role": "overnight high"
+      },
+      {
+        "price": 6991.75,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 44.0,
+        "role": "overnight low"
+      },
+      {
+        "price": 6858.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 177.75,
+        "role": "weekly open"
+      },
+      {
+        "price": 7040.25,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 4.5,
+        "role": "weekly high"
+      },
+      {
+        "price": 6767.0,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 268.75,
+        "role": "weekly low"
+      },
+      {
+        "price": 6608.5,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 427.25,
+        "role": "monthly open"
+      }
+    ],
+    "NQ": [
+      {
+        "price": 26003.25,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 176.0,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 25560.0,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 619.25,
+        "role": "support"
+      },
+      {
+        "price": 25996.75,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 182.5,
+        "role": "pivot"
+      },
+      {
+        "price": 25781.625,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 397.625,
+        "role": "midpoint"
+      },
+      {
+        "price": 26018.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 161.25,
+        "role": "day open"
+      },
+      {
+        "price": 26076.25,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 103.0,
+        "role": "IB high"
+      },
+      {
+        "price": 25982.25,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 197.0,
+        "role": "IB low"
+      },
+      {
+        "price": 26058.0,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 121.25,
+        "role": "overnight high"
+      },
+      {
+        "price": 25933.75,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 245.5,
+        "role": "overnight low"
+      },
+      {
+        "price": 25237.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 942.25,
+        "role": "weekly open"
+      },
+      {
+        "price": 26251.5,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 72.25,
+        "role": "weekly high"
+      },
+      {
+        "price": 24904.5,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1274.75,
+        "role": "weekly low"
+      },
+      {
+        "price": 24285.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1894.25,
+        "role": "monthly open"
+      }
+    ],
+    "YM": [
+      {
+        "price": 48808.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 231.0,
+        "role": "resistance"
+      },
+      {
+        "price": 48344.0,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 233.0,
+        "role": "support"
+      },
+      {
+        "price": 48755.0,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 178.0,
+        "role": "pivot"
+      },
+      {
+        "price": 48576.0,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 1.0,
+        "role": "midpoint"
+      },
+      {
+        "price": 48765.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 188.0,
+        "role": "day open"
+      },
+      {
+        "price": 48911.0,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 334.0,
+        "role": "IB high"
+      },
+      {
+        "price": 48609.0,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 32.0,
+        "role": "IB low"
+      },
+      {
+        "price": 48857.0,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 280.0,
+        "role": "overnight high"
+      },
+      {
+        "price": 48665.0,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 88.0,
+        "role": "overnight low"
+      },
+      {
+        "price": 48380.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 197.0,
+        "role": "weekly open"
+      },
+      {
+        "price": 48911.0,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 334.0,
+        "role": "weekly high"
+      },
+      {
+        "price": 47534.0,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1043.0,
+        "role": "weekly low"
+      },
+      {
+        "price": 46392.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 2185.0,
+        "role": "monthly open"
+      }
+    ],
+    "CL": [
+      {
+        "price": 98.0,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 6.38,
+        "role": "resistance"
+      },
+      {
+        "price": 91.05999755859375,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.56,
+        "role": "support"
+      },
+      {
+        "price": 91.27999877929688,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.34,
+        "role": "pivot"
+      },
+      {
+        "price": 94.53,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 2.91,
+        "role": "midpoint"
+      },
+      {
+        "price": 90.94999694824219,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.67,
+        "role": "day open"
+      },
+      {
+        "price": 91.55000305175781,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.07,
+        "role": "IB high"
+      },
+      {
+        "price": 90.4000015258789,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1.22,
+        "role": "IB low"
+      },
+      {
+        "price": 93.30000305175781,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 1.68,
+        "role": "overnight high"
+      },
+      {
+        "price": 90.30000305175781,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 1.32,
+        "role": "overnight low"
+      },
+      {
+        "price": 98.2300033569336,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 6.61,
+        "role": "weekly open"
+      },
+      {
+        "price": 105.62999725341797,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 14.01,
+        "role": "weekly high"
+      },
+      {
+        "price": 86.95999908447266,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 4.66,
+        "role": "weekly low"
+      },
+      {
+        "price": 100.93000030517578,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 9.31,
+        "role": "monthly open"
+      }
+    ],
+    "GC": [
+      {
+        "price": 4841.60009765625,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 18.3003,
+        "role": "resistance"
+      },
+      {
+        "price": 4770.10009765625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 53.1997,
+        "role": "support"
+      },
+      {
+        "price": 4825.0,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1.7002,
+        "role": "pivot"
+      },
+      {
+        "price": 4805.8501,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 17.4497,
+        "role": "midpoint"
+      },
+      {
+        "price": 4848.0,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 24.7002,
+        "role": "day open"
+      },
+      {
+        "price": 4853.5,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 30.2002,
+        "role": "IB high"
+      },
+      {
+        "price": 4838.2998046875,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 15.0,
+        "role": "IB low"
+      },
+      {
+        "price": 4854.2998046875,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 31.0,
+        "role": "overnight high"
+      },
+      {
+        "price": 4808.39990234375,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 14.8999,
+        "role": "overnight low"
+      },
+      {
+        "price": 4745.89990234375,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 77.3999,
+        "role": "weekly open"
+      },
+      {
+        "price": 4895.39990234375,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 72.1001,
+        "role": "weekly high"
+      },
+      {
+        "price": 4704.0,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 119.2998,
+        "role": "weekly low"
+      },
+      {
+        "price": 5001.60009765625,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 178.3003,
+        "role": "monthly open"
+      }
+    ],
+    "SI": [
+      {
+        "price": 79.58999633789062,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.22,
+        "role": "resistance"
+      },
+      {
+        "price": 76.81500244140625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 2.555,
+        "role": "support"
+      },
+      {
+        "price": 79.39099884033203,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.021,
+        "role": "pivot"
+      },
+      {
+        "price": 78.2025,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 1.1675,
+        "role": "midpoint"
+      },
+      {
+        "price": 79.93000030517578,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.56,
+        "role": "day open"
+      },
+      {
+        "price": 80.22000122070312,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.85,
+        "role": "IB high"
+      },
+      {
+        "price": 79.33999633789062,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.03,
+        "role": "IB low"
+      },
+      {
+        "price": 80.05999755859375,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.69,
+        "role": "overnight high"
+      },
+      {
+        "price": 78.30500030517578,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 1.065,
+        "role": "overnight low"
+      },
+      {
+        "price": 75.30500030517578,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 4.065,
+        "role": "weekly open"
+      },
+      {
+        "price": 81.15499877929688,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 1.785,
+        "role": "weekly high"
+      },
+      {
+        "price": 72.79499816894531,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 6.575,
+        "role": "weekly low"
+      },
+      {
+        "price": 79.0,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.37,
+        "role": "monthly open"
+      }
+    ],
+    "NG": [
+      {
+        "price": 2.6600000858306885,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.056,
+        "role": "resistance"
+      },
+      {
+        "price": 2.561000108718872,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.043,
+        "role": "support"
+      },
+      {
+        "price": 2.5989999771118164,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.005,
+        "role": "pivot"
+      },
+      {
+        "price": 2.6105,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0065,
+        "role": "midpoint"
+      },
+      {
+        "price": 2.5880000591278076,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.016,
+        "role": "day open"
+      },
+      {
+        "price": 2.6029999256134033,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.001,
+        "role": "IB high"
+      },
+      {
+        "price": 2.5869998931884766,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.017,
+        "role": "IB low"
+      },
+      {
+        "price": 2.624000072479248,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.02,
+        "role": "overnight high"
+      },
+      {
+        "price": 2.569999933242798,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.034,
+        "role": "overnight low"
+      },
+      {
+        "price": 2.6710000038146973,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.067,
+        "role": "weekly open"
+      },
+      {
+        "price": 2.7230000495910645,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.119,
+        "role": "weekly high"
+      },
+      {
+        "price": 2.561000108718872,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.043,
+        "role": "weekly low"
+      },
+      {
+        "price": 3.180000066757202,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.576,
+        "role": "monthly open"
+      }
+    ],
+    "SPY": [
+      {
+        "price": 694.5800170898438,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 2.9,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 687.6599731445312,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 9.82,
+        "role": "support"
+      },
+      {
+        "price": 694.4600219726562,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 3.02,
+        "role": "pivot"
+      },
+      {
+        "price": 691.12,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 6.36,
+        "role": "midpoint"
+      },
+      {
+        "price": 695.260009765625,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 2.22,
+        "role": "day open"
+      },
+      {
+        "price": 696.3499755859375,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 1.13,
+        "role": "IB high"
+      },
+      {
+        "price": 694.2000122070312,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 3.28,
+        "role": "IB low"
+      },
+      {
+        "price": 674.8400268554688,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 22.64,
+        "role": "weekly open"
+      },
+      {
+        "price": 697.7999877929688,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.32,
+        "role": "weekly high"
+      },
+      {
+        "price": 673.77001953125,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 23.71,
+        "role": "weekly low"
+      },
+      {
+        "price": 666.5596317087426,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 30.9204,
+        "role": "monthly open"
+      }
+    ],
+    "QQQ": [
+      {
+        "price": 628.5999755859375,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 4.51,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 620.0999755859375,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 13.01,
+        "role": "support"
+      },
+      {
+        "price": 628.5999755859375,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 4.51,
+        "role": "pivot"
+      },
+      {
+        "price": 624.35,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 8.76,
+        "role": "midpoint"
+      },
+      {
+        "price": 629.125,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 3.985,
+        "role": "day open"
+      },
+      {
+        "price": 630.3900146484375,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 2.72,
+        "role": "IB high"
+      },
+      {
+        "price": 628.2000122070312,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 4.91,
+        "role": "IB low"
+      },
+      {
+        "price": 605.9299926757812,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 27.18,
+        "role": "weekly open"
+      },
+      {
+        "price": 634.5701293945312,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 1.4601,
+        "role": "weekly high"
+      },
+      {
+        "price": 603.030029296875,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 30.08,
+        "role": "weekly low"
+      },
+      {
+        "price": 599.2843027330098,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 33.8257,
+        "role": "monthly open"
+      }
+    ],
+    "AAPL": [
+      {
+        "price": 261.92999267578125,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 3.0406,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 257.19000244140625,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 7.7806,
+        "role": "support"
+      },
+      {
+        "price": 258.8299865722656,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 6.1406,
+        "role": "pivot"
+      },
+      {
+        "price": 259.56,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 5.4106,
+        "role": "midpoint"
+      },
+      {
+        "price": 258.0950012207031,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 6.8756,
+        "role": "day open"
+      },
+      {
+        "price": 260.2950134277344,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 4.6756,
+        "role": "IB high"
+      },
+      {
+        "price": 257.82000732421875,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 7.1506,
+        "role": "IB low"
+      },
+      {
+        "price": 259.0,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 5.9706,
+        "role": "weekly open"
+      },
+      {
+        "price": 265.7900085449219,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.8194,
+        "role": "weekly high"
+      },
+      {
+        "price": 256.07000732421875,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 8.9006,
+        "role": "weekly low"
+      },
+      {
+        "price": 252.11000061035156,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 12.8606,
+        "role": "monthly open"
+      }
+    ],
+    "NVDA": [
+      {
+        "price": 196.50999450683594,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.525,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 190.77000427246094,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 6.265,
+        "role": "support"
+      },
+      {
+        "price": 196.50999450683594,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.525,
+        "role": "pivot"
+      },
+      {
+        "price": 193.64,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 3.395,
+        "role": "midpoint"
+      },
+      {
+        "price": 196.5500030517578,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.485,
+        "role": "day open"
+      },
+      {
+        "price": 198.67999267578125,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 1.645,
+        "role": "IB high"
+      },
+      {
+        "price": 196.25999450683594,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.775,
+        "role": "IB low"
+      },
+      {
+        "price": 181.83999633789062,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 15.195,
+        "role": "weekly open"
+      },
+      {
+        "price": 200.39999389648438,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 3.365,
+        "role": "weekly high"
+      },
+      {
+        "price": 180.6199951171875,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 16.415,
+        "role": "weekly low"
+      },
+      {
+        "price": 182.97000122070312,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 14.065,
+        "role": "monthly open"
+      }
+    ],
+    "TSLA": [
+      {
+        "price": 367.6300048828125,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 19.495,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 354.7699890136719,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 32.355,
+        "role": "support"
+      },
+      {
+        "price": 364.20001220703125,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 22.925,
+        "role": "pivot"
+      },
+      {
+        "price": 361.2,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 25.925,
+        "role": "midpoint"
+      },
+      {
+        "price": 366.7950134277344,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 20.33,
+        "role": "day open"
+      },
+      {
+        "price": 371.5299987792969,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 15.595,
+        "role": "IB high"
+      },
+      {
+        "price": 362.5,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 24.625,
+        "role": "IB low"
+      },
+      {
+        "price": 343.1499938964844,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 43.975,
+        "role": "weekly open"
+      },
+      {
+        "price": 394.4798889160156,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 7.3549,
+        "role": "weekly high"
+      },
+      {
+        "price": 337.25,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 49.875,
+        "role": "weekly low"
+      },
+      {
+        "price": 396.2200012207031,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 9.095,
+        "role": "monthly open"
+      }
+    ],
+    "MSFT": [
+      {
+        "price": 394.69000244140625,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 15.12,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 386.5199890136719,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 23.29,
+        "role": "support"
+      },
+      {
+        "price": 393.1099853515625,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 16.7,
+        "role": "pivot"
+      },
+      {
+        "price": 390.605,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 19.205,
+        "role": "midpoint"
+      },
+      {
+        "price": 397.8500061035156,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 11.96,
+        "role": "day open"
+      },
+      {
+        "price": 403.8999938964844,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 5.91,
+        "role": "IB high"
+      },
+      {
+        "price": 396.7300109863281,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 13.08,
+        "role": "IB low"
+      },
+      {
+        "price": 372.5,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 37.31,
+        "role": "weekly open"
+      },
+      {
+        "price": 409.94000244140625,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.13,
+        "role": "weekly high"
+      },
+      {
+        "price": 367.04998779296875,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 42.76,
+        "role": "weekly low"
+      },
+      {
+        "price": 398.07000732421875,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 11.74,
+        "role": "monthly open"
+      }
+    ],
+    "EURUSD": [
+      {
+        "price": 1.1810559034347534,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0007,
+        "role": "resistance"
+      },
+      {
+        "price": 1.1756960153579712,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0047,
+        "role": "support"
+      },
+      {
+        "price": 1.176885962486267,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0035,
+        "role": "pivot"
+      },
+      {
+        "price": 1.1784,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.002,
+        "role": "midpoint"
+      },
+      {
+        "price": 1.179940938949585,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "day open"
+      },
+      {
+        "price": 1.179940938949585,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "IB high"
+      },
+      {
+        "price": 1.178828239440918,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0016,
+        "role": "IB low"
+      },
+      {
+        "price": 1.1802195310592651,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0002,
+        "role": "overnight high"
+      },
+      {
+        "price": 1.1777175664901733,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0027,
+        "role": "overnight low"
+      },
+      {
+        "price": 1.165813684463501,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0146,
+        "role": "weekly open"
+      },
+      {
+        "price": 1.1810559034347534,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0007,
+        "role": "weekly high"
+      },
+      {
+        "price": 1.1651073694229126,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0153,
+        "role": "weekly low"
+      },
+      {
+        "price": 1.1438244581222534,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0366,
+        "role": "monthly open"
+      }
+    ],
+    "GBPUSD": [
+      {
+        "price": 1.3588987588882446,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0018,
+        "role": "resistance"
+      },
+      {
+        "price": 1.3504297733306885,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0067,
+        "role": "support"
+      },
+      {
+        "price": 1.3515340089797974,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0056,
+        "role": "pivot"
+      },
+      {
+        "price": 1.3547,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0024,
+        "role": "midpoint"
+      },
+      {
+        "price": 1.3567858934402466,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0003,
+        "role": "day open"
+      },
+      {
+        "price": 1.3566312789916992,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "IB high"
+      },
+      {
+        "price": 1.3554322719573975,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0017,
+        "role": "IB low"
+      },
+      {
+        "price": 1.3577622175216675,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0007,
+        "role": "overnight high"
+      },
+      {
+        "price": 1.3543821573257446,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0027,
+        "role": "overnight low"
+      },
+      {
+        "price": 1.3394052982330322,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0177,
+        "role": "weekly open"
+      },
+      {
+        "price": 1.3588987588882446,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0018,
+        "role": "weekly high"
+      },
+      {
+        "price": 1.3382043838500977,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0189,
+        "role": "weekly low"
+      },
+      {
+        "price": 1.3249244689941406,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0322,
+        "role": "monthly open"
+      }
+    ],
+    "USDJPY": [
+      {
+        "price": 159.32400512695312,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.348,
+        "role": "resistance"
+      },
+      {
+        "price": 158.60299682617188,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.373,
+        "role": "support"
+      },
+      {
+        "price": 159.21400451660156,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.238,
+        "role": "pivot"
+      },
+      {
+        "price": 158.9635,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0125,
+        "role": "midpoint"
+      },
+      {
+        "price": 158.82400512695312,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.152,
+        "role": "day open"
+      },
+      {
+        "price": 159.0919952392578,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.116,
+        "role": "IB high"
+      },
+      {
+        "price": 158.9739990234375,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.002,
+        "role": "IB low"
+      },
+      {
+        "price": 159.1510009765625,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.175,
+        "role": "overnight high"
+      },
+      {
+        "price": 158.63600158691406,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.34,
+        "role": "overnight low"
+      },
+      {
+        "price": 158.63400268554688,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.342,
+        "role": "weekly open"
+      },
+      {
+        "price": 159.85000610351562,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.874,
+        "role": "weekly high"
+      },
+      {
+        "price": 158.60299682617188,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.373,
+        "role": "weekly low"
+      },
+      {
+        "price": 159.51199340820312,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.536,
+        "role": "monthly open"
+      }
+    ],
+    "USDCHF": [
+      {
+        "price": 0.7837600111961365,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0021,
+        "role": "resistance"
+      },
+      {
+        "price": 0.7789999842643738,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0027,
+        "role": "support"
+      },
+      {
+        "price": 0.7832000255584717,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0015,
+        "role": "pivot"
+      },
+      {
+        "price": 0.7814,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0003,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.7809200286865234,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0008,
+        "role": "day open"
+      },
+      {
+        "price": 0.7821300029754639,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0004,
+        "role": "IB high"
+      },
+      {
+        "price": 0.7812299728393555,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "IB low"
+      },
+      {
+        "price": 0.7831699848175049,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0015,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.7798100113868713,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0019,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.7914199829101562,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0097,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.792900025844574,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0112,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.7789999842643738,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0027,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.7898399829864502,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0081,
+        "role": "monthly open"
+      }
+    ],
+    "AUDUSD": [
+      {
+        "price": 0.7148100733757019,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0018,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 0.7078002691268921,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0088,
+        "role": "support"
+      },
+      {
+        "price": 0.7099298238754272,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0067,
+        "role": "pivot"
+      },
+      {
+        "price": 0.7113,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0053,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.7128599882125854,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0037,
+        "role": "day open"
+      },
+      {
+        "price": 0.7148780822753906,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0017,
+        "role": "IB high"
+      },
+      {
+        "price": 0.7139797210693359,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0026,
+        "role": "IB low"
+      },
+      {
+        "price": 0.714832067489624,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0018,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.7130582332611084,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0035,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.7038798928260803,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0127,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.716835618019104,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0002,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.7017400860786438,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0149,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.700790524482727,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0158,
+        "role": "monthly open"
+      }
+    ],
+    "NZDUSD": [
+      {
+        "price": 0.5920803546905518,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0008,
+        "role": "resistance"
+      },
+      {
+        "price": 0.5857990384101868,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0055,
+        "role": "support"
+      },
+      {
+        "price": 0.5871990919113159,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0041,
+        "role": "pivot"
+      },
+      {
+        "price": 0.5889,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0024,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.5904233455657959,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0009,
+        "role": "day open"
+      },
+      {
+        "price": 0.5904233455657959,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0009,
+        "role": "IB high"
+      },
+      {
+        "price": 0.589448869228363,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0019,
+        "role": "IB low"
+      },
+      {
+        "price": 0.5910863876342773,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0002,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.5895531177520752,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0017,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.5826385021209717,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0087,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.5920803546905518,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0008,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.5801911354064941,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0111,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.5798614025115967,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0114,
+        "role": "monthly open"
+      }
+    ],
+    "USDCAD": [
+      {
+        "price": 1.3765900135040283,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.003,
+        "role": "day open"
+      },
+      {
+        "price": 1.3769700527191162,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0034,
+        "role": "IB high"
+      },
+      {
+        "price": 1.3759700059890747,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0024,
+        "role": "IB low"
+      },
+      {
+        "price": 1.3788299560546875,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0052,
+        "role": "overnight high"
+      },
+      {
+        "price": 1.3756999969482422,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0021,
+        "role": "overnight low"
+      },
+      {
+        "price": 1.3765000104904175,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0029,
+        "role": "weekly open"
+      },
+      {
+        "price": 1.3788299560546875,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0052,
+        "role": "weekly high"
+      },
+      {
+        "price": 1.3729000091552734,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0007,
+        "role": "weekly low"
+      },
+      {
+        "price": 1.3710500001907349,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0025,
+        "role": "monthly open"
+      }
+    ],
+    "EURGBP": [
+      {
+        "price": 0.8712599873542786,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0019,
+        "role": "resistance"
+      },
+      {
+        "price": 0.868399977684021,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.001,
+        "role": "support"
+      },
+      {
+        "price": 0.8704000115394592,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.001,
+        "role": "pivot"
+      },
+      {
+        "price": 0.8698,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0004,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.8692799806594849,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0001,
+        "role": "day open"
+      },
+      {
+        "price": 0.8697100281715393,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0003,
+        "role": "IB high"
+      },
+      {
+        "price": 0.8692200183868408,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0002,
+        "role": "IB low"
+      },
+      {
+        "price": 0.8697800040245056,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0004,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.8686699867248535,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0007,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.8704599738121033,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0011,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.8721699714660645,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0028,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.868399977684021,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.001,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.8632400035858154,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0062,
+        "role": "monthly open"
+      }
+    ],
+    "EURJPY": [
+      {
+        "price": 187.50999450683594,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.033,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 187.0800018310547,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.463,
+        "role": "support"
+      },
+      {
+        "price": 187.3419952392578,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.201,
+        "role": "pivot"
+      },
+      {
+        "price": 187.295,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.248,
+        "role": "midpoint"
+      },
+      {
+        "price": 187.3489990234375,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.194,
+        "role": "day open"
+      },
+      {
+        "price": 187.55799865722656,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.015,
+        "role": "IB high"
+      },
+      {
+        "price": 187.42799377441406,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.115,
+        "role": "IB low"
+      },
+      {
+        "price": 187.58999633789062,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.047,
+        "role": "overnight high"
+      },
+      {
+        "price": 187.0970001220703,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.446,
+        "role": "overnight low"
+      },
+      {
+        "price": 184.93299865722656,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 2.61,
+        "role": "weekly open"
+      },
+      {
+        "price": 187.63699340820312,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.094,
+        "role": "weekly high"
+      },
+      {
+        "price": 184.93299865722656,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 2.61,
+        "role": "weekly low"
+      },
+      {
+        "price": 182.44200134277344,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 5.101,
+        "role": "monthly open"
+      }
+    ],
+    "GBPJPY": [
+      {
+        "price": 215.781005859375,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.037,
+        "role": "resistance"
+      },
+      {
+        "price": 214.906005859375,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.838,
+        "role": "support"
+      },
+      {
+        "price": 215.18600463867188,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.558,
+        "role": "pivot"
+      },
+      {
+        "price": 215.3435,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.4005,
+        "role": "midpoint"
+      },
+      {
+        "price": 215.48399353027344,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.26,
+        "role": "day open"
+      },
+      {
+        "price": 215.68800354003906,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.056,
+        "role": "IB high"
+      },
+      {
+        "price": 215.56700134277344,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.177,
+        "role": "IB low"
+      },
+      {
+        "price": 215.7830047607422,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.039,
+        "role": "overnight high"
+      },
+      {
+        "price": 215.1820068359375,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.562,
+        "role": "overnight low"
+      },
+      {
+        "price": 212.43899536132812,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 3.305,
+        "role": "weekly open"
+      },
+      {
+        "price": 215.82699584960938,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.083,
+        "role": "weekly high"
+      },
+      {
+        "price": 212.43899536132812,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 3.305,
+        "role": "weekly low"
+      },
+      {
+        "price": 211.33099365234375,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 4.413,
+        "role": "monthly open"
+      }
+    ],
+    "EURCHF": [
+      {
+        "price": 0.9217000007629395,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0007,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 0.919439971446991,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.003,
+        "role": "support"
+      },
+      {
+        "price": 0.9215400218963623,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0009,
+        "role": "pivot"
+      },
+      {
+        "price": 0.9206,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0018,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.9210500121116638,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0013,
+        "role": "day open"
+      },
+      {
+        "price": 0.921779990196228,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0006,
+        "role": "IB high"
+      },
+      {
+        "price": 0.9209700226783752,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0014,
+        "role": "IB low"
+      },
+      {
+        "price": 0.9225000143051147,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0001,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.9193300008773804,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0031,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.9225800037384033,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0002,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.9262599945068359,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0039,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.9193300008773804,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0031,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.9033300280570984,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0191,
+        "role": "monthly open"
+      }
+    ],
+    "AUDCAD": [
+      {
+        "price": 0.9821500182151794,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.002,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 0.9754559993743896,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0087,
+        "role": "support"
+      },
+      {
+        "price": 0.9785199761390686,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0057,
+        "role": "pivot"
+      },
+      {
+        "price": 0.9788,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0054,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.981249988079071,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.003,
+        "role": "day open"
+      },
+      {
+        "price": 0.9840199947357178,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0002,
+        "role": "IB high"
+      },
+      {
+        "price": 0.9821500182151794,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.002,
+        "role": "IB low"
+      },
+      {
+        "price": 0.9845200181007385,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0003,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.9812800288200378,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0029,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.97461998462677,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0096,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.9848499894142151,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0006,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.9727799892425537,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0114,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.9607300162315369,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0235,
+        "role": "monthly open"
+      }
+    ],
+    "CADJPY": [
+      {
+        "price": 115.59200286865234,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.144,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 115.32099914550781,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.415,
+        "role": "support"
+      },
+      {
+        "price": 115.4800033569336,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.256,
+        "role": "pivot"
+      },
+      {
+        "price": 115.4565,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.2795,
+        "role": "midpoint"
+      },
+      {
+        "price": 115.36100006103516,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.375,
+        "role": "day open"
+      },
+      {
+        "price": 115.57099914550781,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.165,
+        "role": "IB high"
+      },
+      {
+        "price": 115.46299743652344,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.273,
+        "role": "IB low"
+      },
+      {
+        "price": 115.5479965209961,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.188,
+        "role": "overnight high"
+      },
+      {
+        "price": 115.26799774169922,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.468,
+        "role": "overnight low"
+      },
+      {
+        "price": 114.53500366210938,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1.201,
+        "role": "weekly open"
+      },
+      {
+        "price": 115.75700378417969,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.021,
+        "role": "weekly high"
+      },
+      {
+        "price": 114.51000213623047,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1.226,
+        "role": "weekly low"
+      },
+      {
+        "price": 116.33300018310547,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.597,
+        "role": "monthly open"
+      }
+    ],
+    "AUDNZD": [
+      {
+        "price": 1.2089699506759644,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0032,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 1.204200029373169,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.008,
+        "role": "support"
+      },
+      {
+        "price": 1.209030032157898,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0032,
+        "role": "pivot"
+      },
+      {
+        "price": 1.2066,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0056,
+        "role": "midpoint"
+      },
+      {
+        "price": 1.207550048828125,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0046,
+        "role": "day open"
+      },
+      {
+        "price": 1.2118300199508667,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0004,
+        "role": "IB high"
+      },
+      {
+        "price": 1.2105499505996704,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0017,
+        "role": "IB low"
+      },
+      {
+        "price": 1.211459994316101,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0007,
+        "role": "overnight high"
+      },
+      {
+        "price": 1.2077699899673462,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0044,
+        "role": "overnight low"
+      },
+      {
+        "price": 1.2080600261688232,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0041,
+        "role": "weekly open"
+      },
+      {
+        "price": 1.2124899625778198,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0003,
+        "role": "weekly high"
+      },
+      {
+        "price": 1.2041000127792358,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0081,
+        "role": "weekly low"
+      },
+      {
+        "price": 1.2085399627685547,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0037,
+        "role": "monthly open"
+      }
+    ],
+    "NZDJPY": [
+      {
+        "price": 93.91500091552734,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.041,
+        "role": "S/R FLIP \u2192 now support"
+      },
+      {
+        "price": 93.21900177001953,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.737,
+        "role": "support"
+      },
+      {
+        "price": 93.46600341796875,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.49,
+        "role": "pivot"
+      },
+      {
+        "price": 93.567,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.389,
+        "role": "midpoint"
+      },
+      {
+        "price": 93.73200225830078,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.224,
+        "role": "day open"
+      },
+      {
+        "price": 93.84700012207031,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.109,
+        "role": "IB high"
+      },
+      {
+        "price": 93.7229995727539,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.233,
+        "role": "IB low"
+      },
+      {
+        "price": 93.91300201416016,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.043,
+        "role": "overnight high"
+      },
+      {
+        "price": 93.677001953125,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.279,
+        "role": "overnight low"
+      },
+      {
+        "price": 92.39700317382812,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1.559,
+        "role": "weekly open"
+      },
+      {
+        "price": 93.98300170898438,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.027,
+        "role": "weekly high"
+      },
+      {
+        "price": 92.30000305175781,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 1.656,
+        "role": "weekly low"
+      },
+      {
+        "price": 92.4749984741211,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 1.481,
+        "role": "monthly open"
+      }
+    ],
+    "GBPAUD": [
+      {
+        "price": 1.9089900255203247,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0151,
+        "role": "resistance"
+      },
+      {
+        "price": 1.900439977645874,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0065,
+        "role": "S/R FLIP \u2192 now resistance"
+      },
+      {
+        "price": 1.9036400318145752,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0097,
+        "role": "pivot"
+      },
+      {
+        "price": 1.9047,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0108,
+        "role": "midpoint"
+      },
+      {
+        "price": 1.9031800031661987,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0093,
+        "role": "day open"
+      },
+      {
+        "price": 1.8985600471496582,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0047,
+        "role": "IB high"
+      },
+      {
+        "price": 1.896880030632019,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.003,
+        "role": "IB low"
+      },
+      {
+        "price": 1.9024800062179565,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0086,
+        "role": "overnight high"
+      },
+      {
+        "price": 1.8967900276184082,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0029,
+        "role": "overnight low"
+      },
+      {
+        "price": 1.9025499820709229,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0086,
+        "role": "weekly open"
+      },
+      {
+        "price": 1.9092400074005127,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0153,
+        "role": "weekly high"
+      },
+      {
+        "price": 1.8933700323104858,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "weekly low"
+      },
+      {
+        "price": 1.8905500173568726,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0033,
+        "role": "monthly open"
+      }
+    ],
+    "NZDCAD": [
+      {
+        "price": 0.8134179711341858,
+        "label": "PDH",
+        "type": "resistance",
+        "strength": "strong",
+        "distance_pts": 0.0016,
+        "role": "resistance"
+      },
+      {
+        "price": 0.8073999881744385,
+        "label": "PDL",
+        "type": "support",
+        "strength": "strong",
+        "distance_pts": 0.0044,
+        "role": "support"
+      },
+      {
+        "price": 0.8093680143356323,
+        "label": "PDC",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0024,
+        "role": "pivot"
+      },
+      {
+        "price": 0.8104,
+        "label": "PDM",
+        "type": "pivot",
+        "strength": "weak",
+        "distance_pts": 0.0014,
+        "role": "midpoint"
+      },
+      {
+        "price": 0.8122900128364563,
+        "label": "DO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0005,
+        "role": "day open"
+      },
+      {
+        "price": 0.8124399781227112,
+        "label": "IBH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0006,
+        "role": "IB high"
+      },
+      {
+        "price": 0.8111000061035156,
+        "label": "IBL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.0007,
+        "role": "IB low"
+      },
+      {
+        "price": 0.8135700225830078,
+        "label": "ONH",
+        "type": "resistance",
+        "strength": "weak",
+        "distance_pts": 0.0018,
+        "role": "overnight high"
+      },
+      {
+        "price": 0.8116099834442139,
+        "label": "ONL",
+        "type": "support",
+        "strength": "weak",
+        "distance_pts": 0.0002,
+        "role": "overnight low"
+      },
+      {
+        "price": 0.8065900206565857,
+        "label": "WO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.0052,
+        "role": "weekly open"
+      },
+      {
+        "price": 0.8135700225830078,
+        "label": "WH",
+        "type": "resistance",
+        "strength": "medium",
+        "distance_pts": 0.0018,
+        "role": "weekly high"
+      },
+      {
+        "price": 0.8047900199890137,
+        "label": "WL",
+        "type": "support",
+        "strength": "medium",
+        "distance_pts": 0.007,
+        "role": "weekly low"
+      },
+      {
+        "price": 0.7948399782180786,
+        "label": "MO",
+        "type": "pivot",
+        "strength": "medium",
+        "distance_pts": 0.017,
+        "role": "monthly open"
+      }
+    ]
+  },
+  "sentiment": {
+    "put_call": 0.92,
+    "aaii_bull": 38,
+    "aaii_bear": 34,
+    "btc_gold_ratio": 28.4
+  },
+  "iv": {}
+};
+/* END_LIVE_DATA */
+
+// ============================================================
+// Config
+// ============================================================
+const FUTURES_CONFIG = {
+  MES:  { point_value:5,    tick:0.25,  group:"indices",     type:"futures" },
+  MNQ:  { point_value:2,    tick:0.25,  group:"indices",     type:"futures" },
+  MYM:  { point_value:0.5,  tick:1,     group:"indices",     type:"futures" },
+  MCL:  { point_value:100,  tick:0.01,  group:"commodities", type:"futures" },
+  MGC:  { point_value:10,   tick:0.10,  group:"metals",      type:"futures" },
+  MSI:  { point_value:25,   tick:0.005, group:"metals",      type:"futures" },
+  MNG:  { point_value:250,  tick:0.001, group:"commodities", type:"futures" },
+  M2K:  { point_value:5,    tick:0.10,  group:"indices",     type:"futures" },
+  // Full-size reference contracts (price + COT only — no alerts)
+  ES:   { point_value:50,   tick:0.25,  group:"indices",     type:"reference" },
+  NQ:   { point_value:20,   tick:0.25,  group:"indices",     type:"reference" },
+  YM:   { point_value:5,    tick:1,     group:"indices",     type:"reference" },
+  CL:   { point_value:1000, tick:0.01,  group:"commodities", type:"reference" },
+  GC:   { point_value:100,  tick:0.10,  group:"metals",      type:"reference" },
+  SI:   { point_value:250,  tick:0.005, group:"metals",      type:"reference" },
+  NG:   { point_value:2500, tick:0.001, group:"commodities", type:"reference" },
+  SPY:  { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  QQQ:  { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  AAPL: { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  NVDA: { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  TSLA: { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  MSFT: { point_value:100,  tick:0.01,  group:"stocks",      type:"stock" },
+  // Major forex pairs
+  EURUSD: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  GBPUSD: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  USDJPY: { point_value:0, tick:0.001,   group:"forex-major", type:"forex", decimals:3 },
+  USDCHF: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  AUDUSD: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  NZDUSD: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  USDCAD: { point_value:0, tick:0.00001, group:"forex-major", type:"forex", decimals:5 },
+  // Minor forex pairs
+  EURGBP: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+  EURJPY: { point_value:0, tick:0.001,   group:"forex-minor", type:"forex", decimals:3 },
+  GBPJPY: { point_value:0, tick:0.001,   group:"forex-minor", type:"forex", decimals:3 },
+  EURCHF: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+  AUDCAD: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+  CADJPY: { point_value:0, tick:0.001,   group:"forex-minor", type:"forex", decimals:3 },
+  AUDNZD: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+  NZDJPY: { point_value:0, tick:0.001,   group:"forex-minor", type:"forex", decimals:3 },
+  GBPAUD: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+  NZDCAD: { point_value:0, tick:0.00001, group:"forex-minor", type:"forex", decimals:5 },
+};
+
+// ============================================================
+// State
+// ============================================================
+let selectedSymbol  = null;
+let currentFilter   = 'all';
+let currentTF       = '15m';
+let lastRefresh     = new Date();
+
+// ============================================================
+// Clock
+// ============================================================
+function updateClock() {
+  const now = new Date();
+  const et = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).format(now);
+  document.getElementById('clock').textContent = et + ' ET';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ============================================================
+// Watchlist rendering
+// ============================================================
+function dotClass(val) {
+  if (val >= 2) return 'pos2';
+  if (val === 1) return 'pos1';
+  if (val === 0) return 'zero';
+  if (val === -1) return 'neg1';
+  return 'neg2';
+}
+
+function biasClass(bias) {
+  if (bias === 'Very Bullish') return 'vbull';
+  if (bias === 'Bullish')      return 'bull';
+  if (bias === 'Bearish')      return 'bear';
+  if (bias === 'Very Bearish') return 'vbear';
+  return 'neut';
+}
+
+function scoreClass(total) {
+  if (total > 0) return 'score-pos';
+  if (total < 0) return 'score-neg';
+  return 'score-0';
+}
+
+function formatPrice(sym, price) {
+  if (!price) return '—';
+  const cfg = FUTURES_CONFIG[sym] || {};
+  if (cfg.type === 'forex') return price.toFixed(cfg.decimals || 5);
+  if (['MCL','MSI','MNG'].includes(sym)) return price.toFixed(3);
+  if (sym === 'MGC') return price.toFixed(1);
+  if (cfg.type === 'stock') return '$' + price.toFixed(2);
+  return price.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:2});
+}
+
+function renderWatchlist() {
+  const tbody = document.getElementById('watchlist-body');
+  tbody.innerHTML = '';
+
+  Object.keys(FUTURES_CONFIG).forEach(sym => {
+    const cfg   = FUTURES_CONFIG[sym];
+    const pd    = LIVE_DATA.prices[sym] || {};
+    const sc    = LIVE_DATA.scores[sym] || { total:0, bias:'Neutral', TEC:0,COT:0,RET:0,SEA:0,ECO:0,PC:0,MOM:0 };
+    const iv    = LIVE_DATA.iv[sym];
+    const isRef = cfg.type === 'reference';
+
+    // Filter
+    if (currentFilter !== 'all') {
+      const grp  = cfg.group;
+      const bcls = biasClass(sc.bias);
+      // Bias filters: apply to all rows including reference
+      if (['vbull','bull','neut','bear','vbear'].includes(currentFilter) && bcls !== currentFilter) return;
+      // Group filters: show matching group including reference
+      if (['indices','metals','commodities','stocks','forex-major','forex-minor'].includes(currentFilter) && grp !== currentFilter) return;
+      // Reference filter: show only reference rows
+      if (currentFilter === 'reference' && !isRef) return;
+    }
+
+    const chgPos = (pd.change_pct || 0) >= 0;
+    const chgStr = (chgPos ? '+' : '') + (pd.change_pct || 0).toFixed(2) + '%';
+
+    const tr = document.createElement('tr');
+    tr.dataset.symbol = sym;
+    if (sym === selectedSymbol) tr.classList.add('selected');
+    if (isRef) tr.style.opacity = '0.75';
+
+    const signals  = ['TEC','COT','RET','SEA','ECO','PC','MOM'];
+    const scoreStr = sc.total > 0 ? `+${sc.total}` : `${sc.total}`;
+    const ivHtml   = iv ? `<span class="iv-${iv.env}">${iv.rank}%</span>` : '<span class="iv-low">—</span>';
+    const symLabel = isRef
+      ? `${sym}<span style="font-size:8px;color:var(--text2);margin-left:3px;vertical-align:middle;border:1px solid var(--border);padding:0 2px;border-radius:2px">ref</span>`
+      : sym;
+    tr.innerHTML = `
+      <td class="sym">${symLabel}</td>
+      <td class="price-cell">${formatPrice(sym, pd.price || 0)}</td>
+      <td class="${chgPos ? 'change-pos' : 'change-neg'}">${chgStr}</td>
+      <td><span class="score-num ${scoreClass(sc.total)}">${scoreStr}</span></td>
+      <td><span class="badge ${biasClass(sc.bias)}">${sc.bias}</span></td>
+      ${signals.map(k => `<td><span class="sig-cell ${dotClass(sc[k])}" title="${k}">${sc[k] > 0 ? '+' : ''}${sc[k]}</span></td>`).join('')}
+      <td>${ivHtml}</td>
+    `;
+
+    tr.addEventListener('click', () => openIntraday(sym));
+    tbody.appendChild(tr);
+  });
+}
+
+// ============================================================
+// Filter + TF
+// ============================================================
+function filterWL(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderWatchlist();
+}
+
+function setTF(tf) {
+  currentTF = tf;
+  document.querySelectorAll('.tf-pill').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  if (selectedSymbol) openIntraday(selectedSymbol);
+}
+
+// ============================================================
+// Intraday Panel
+// ============================================================
+function openIntraday(sym) {
+  selectedSymbol = sym;
+  renderWatchlist();
+
+  const panel = document.getElementById('intraday-panel');
+  panel.classList.add('open');
+  document.getElementById('intraday-title').textContent = `${sym} — Intraday (${currentTF})`;
+
+  // Selected symbol actions
+  document.getElementById('selected-symbol-actions').style.display = 'block';
+  document.getElementById('selected-for-action').textContent = sym;
+
+  // Levels
+  renderLevels(sym);
+  renderTechSignals(sym);
+  renderSessionLevels(sym);
+  renderOptionsSnapshot(sym);
+}
+
+function closeIntraday() {
+  document.getElementById('intraday-panel').classList.remove('open');
+  document.getElementById('selected-symbol-actions').style.display = 'none';
+  selectedSymbol = null;
+  renderWatchlist();
+}
+
+function renderLevels(sym) {
+  const container = document.getElementById('levels-list');
+  const price     = LIVE_DATA.prices[sym]?.price || 0;
+  const levels    = (LIVE_DATA.levels[sym] || []).sort((a,b) => Math.abs(a.distance_pts) - Math.abs(b.distance_pts));
+
+  container.innerHTML = '';
+
+  const LEVEL_NAMES = {
+    PDH: 'Prev Day High', PDL: 'Prev Day Low', PDC: 'Prev Day Close', PDM: 'Prev Day Mid',
+    DO:  'Day Open',      IBH: 'IB High',       IBL: 'IB Low',
+    WO:  'Weekly Open',   WH:  'Weekly High',   WL:  'Weekly Low',
+    MO:  'Monthly Open',  ONH: 'Overnight High', ONL: 'Overnight Low',
+  };
+
+  levels.forEach(lvl => {
+    const isHot   = lvl.distance_pts / (price || 1) < 0.005;
+    const typeClass = lvl.type === 'support' ? 'level-sup' : lvl.type === 'resistance' ? 'level-res' : 'level-piv';
+    const distDir = lvl.price > price ? '↑' : '↓';
+    const cfg = FUTURES_CONFIG[sym] || {};
+    const distPts = lvl.distance_pts.toFixed(cfg.type === 'stock' ? 2 : 1);
+    const displayLabel = LEVEL_NAMES[lvl.label] || lvl.label;
+
+    const div = document.createElement('div');
+    div.className = `level-row ${typeClass} ${isHot ? 'level-hot' : ''}`;
+    div.innerHTML = `
+      <span class="level-label">${displayLabel}${isHot ? ' <span class="hot-star">★</span>' : ''}</span>
+      <span class="level-price">${formatPrice(sym, lvl.price)}</span>
+      <span class="level-dist">${distDir}${distPts}pts</span>
+      <span class="level-role">${lvl.role || lvl.type}</span>
+    `;
+    div.addEventListener('click', () => {
+      document.getElementById('p-entry').value = lvl.price;
+      calcRR();
+    });
+    container.appendChild(div);
+  });
+
+  if (!levels.length) container.innerHTML = '<div style="color:var(--text2);padding:8px">No levels loaded — run calculate_daily_levels.py</div>';
+}
+
+function renderTechSignals(sym) {
+  const sc   = LIVE_DATA.scores[sym] || {};
+  const pd   = LIVE_DATA.prices[sym] || {};
+  const container = document.getElementById('tech-signals');
+
+  const signals = [
+    { label:'TEC (MA)', val: sc.TEC },
+    { label:'COT',      val: sc.COT },
+    { label:'MOM',      val: sc.MOM },
+    { label:'ECO',      val: sc.ECO },
+    { label:'SEA',      val: sc.SEA },
+    { label:'P/C',      val: sc.PC  },
+  ];
+
+  container.innerHTML = signals.map(s => {
+    const color = s.val > 0 ? 'var(--green)' : s.val < 0 ? 'var(--red)' : 'var(--text2)';
+    const str   = s.val > 0 ? `+${s.val}` : `${s.val}`;
+    return `<div class="tech-item">
+      <div class="tech-label">${s.label}</div>
+      <div class="tech-value" style="color:${color}">${str}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderSessionLevels(sym) {
+  const container = document.getElementById('session-levels-block');
+  const price     = LIVE_DATA.prices[sym]?.price || 0;
+  const levels    = LIVE_DATA.levels[sym] || [];
+  const KEY_LABELS = {
+    PDH: 'Prev Day High', PDC: 'Prev Day Close', PDL: 'Prev Day Low',
+    IBH: 'IB High',       IBL: 'IB Low',
+    ONH: 'Overnight High', ONL: 'Overnight Low',
+    WO:  'Weekly Open',
+  };
+  const byLabel = {};
+  levels.forEach(l => byLabel[l.label] = l.price);
+
+  const rows = Object.keys(KEY_LABELS).filter(k => byLabel[k]).map(k => {
+    const p = byLabel[k];
+    const above = p > price;
+    const color = above ? 'var(--red)' : 'var(--green)';
+    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;">
+      <span style="color:var(--text2)">${KEY_LABELS[k]}</span>
+      <span style="color:${color};font-variant-numeric:tabular-nums">${formatPrice(sym,p)}</span>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = rows || '<div style="color:var(--text2)">No session levels</div>';
+}
+
+function renderOptionsSnapshot(sym) {
+  const container = document.getElementById('options-snapshot');
+  const iv = LIVE_DATA.iv[sym];
+  if (!iv) { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+
+  const earningsNote = '';  // populated by refresh script
+  const ivColor = iv.env === 'high' ? 'var(--red)' : iv.env === 'medium' ? 'var(--yellow)' : 'var(--green)';
+  const strategy = iv.rank >= 50 ? 'Favor SELLING options (CSP / CC)' : 'Favor BUYING options (calls / puts)';
+
+  document.getElementById('opt-card-content').innerHTML = `
+    <div class="opt-row"><span>IV Rank</span><span style="color:${ivColor};font-weight:700">${iv.rank}% (${iv.env.toUpperCase()})</span></div>
+    <div class="opt-row"><span>Strategy</span><span style="color:${ivColor}">${strategy}</span></div>
+    <div class="opt-row"><span>DTE (swing)</span><span>30–45 DTE</span></div>
+    <div class="opt-row"><span>DTE (day)</span><span>0–7 DTE</span></div>
+    ${earningsNote ? `<div class="opt-row"><span style="color:var(--yellow)">⚠️ Earnings</span><span style="color:var(--yellow)">${earningsNote}</span></div>` : ''}
+  `;
+}
+
+// ============================================================
+// Entry planner R:R calculator
+// ============================================================
+function calcRR() {
+  const entry  = parseFloat(document.getElementById('p-entry').value);
+  const stop   = parseFloat(document.getElementById('p-stop').value);
+  const target = parseFloat(document.getElementById('p-target').value);
+  const disp   = document.getElementById('rr-display');
+
+  if (!entry || !stop || !target) {
+    disp.innerHTML = 'Enter entry, stop, and target to calculate R:R';
+    return;
+  }
+
+  const risk    = Math.abs(entry - stop);
+  const reward  = Math.abs(target - entry);
+  const rr      = risk > 0 ? (reward / risk).toFixed(2) : 0;
+
+  let dollarRisk = 0, dollarReward = 0;
+  if (selectedSymbol && FUTURES_CONFIG[selectedSymbol]) {
+    const pv  = FUTURES_CONFIG[selectedSymbol].point_value;
+    dollarRisk   = (risk   * pv).toFixed(2);
+    dollarReward = (reward * pv).toFixed(2);
+  }
+
+  const rrColor = rr >= 2 ? 'var(--green)' : rr >= 1.5 ? 'var(--yellow)' : 'var(--red)';
+  const sym = selectedSymbol || '?';
+
+  disp.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+      <div><div style="color:var(--text2);font-size:10px">Risk (pts)</div><div style="color:var(--red);font-weight:700">${risk.toFixed(2)}</div></div>
+      <div><div style="color:var(--text2);font-size:10px">Reward (pts)</div><div style="color:var(--green);font-weight:700">${reward.toFixed(2)}</div></div>
+      <div><div style="color:var(--text2);font-size:10px">R:R</div><div style="color:${rrColor};font-weight:700">${rr}:1</div></div>
+    </div>
+    ${dollarRisk ? `<div style="margin-top:6px;font-size:11px;color:var(--text2)">Dollar risk per contract (${sym}): <span style="color:var(--red);font-weight:700">$${dollarRisk}</span> | Reward: <span style="color:var(--green);font-weight:700">$${dollarReward}</span></div>` : ''}
+  `;
+}
+
+function loadPreset(type) {
+  const sym   = selectedSymbol;
+  const price = LIVE_DATA.prices[sym]?.price || 0;
+  const levels = LIVE_DATA.levels[sym] || [];
+  const cfg   = FUTURES_CONFIG[sym] || {};
+  const byLabel = {};
+  levels.forEach(l => byLabel[l.label] = l.price);
+
+  if (type === 'break_retest') {
+    // Long: entry = PDH, stop = PDC, target = PDH + (PDH-PDC)*1.5
+    const entry = byLabel['PDH'] || price;
+    const stop  = byLabel['PDC'] || (price - price * 0.003);
+    const tgt   = entry + Math.abs(entry - stop) * 1.5;
+    document.getElementById('p-entry').value  = entry;
+    document.getElementById('p-stop').value   = stop;
+    document.getElementById('p-target').value = tgt.toFixed(2);
+  } else if (type === 'fade') {
+    // Short at PDH: entry = PDH, stop = PDH + ATR, target = PDC
+    const entry = byLabel['PDH'] || price;
+    const target = byLabel['PDC'] || (price - price * 0.005);
+    const stop   = entry + Math.abs(entry - target) * 0.4;
+    document.getElementById('p-entry').value  = entry;
+    document.getElementById('p-stop').value   = stop.toFixed(2);
+    document.getElementById('p-target').value = target;
+  }
+  calcRR();
+}
+
+// ============================================================
+// COT Section
+// ============================================================
+function renderCOT() {
+  const container = document.getElementById('cot-section');
+  const cot = LIVE_DATA.cot;
+  if (!cot) { container.innerHTML = '<div style="color:var(--text2)">COT data not loaded</div>'; return; }
+
+  const sorted = Object.entries(cot).sort((a,b) => b[1].net_change - a[1].net_change);
+
+  // Top 3 buys + sells
+  const header = document.createElement('div');
+  header.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <div style="font-size:10px;color:var(--green);font-weight:600;text-transform:uppercase">Biggest Buys</div>
+      <div style="font-size:10px;color:var(--red);font-weight:600;text-transform:uppercase">Biggest Sells</div>
+    </div>
+  `;
+  container.innerHTML = '';
+  container.appendChild(header);
+
+  const buys  = sorted.filter(([,d]) => d.net_change > 0).slice(0,3);
+  const sells = sorted.filter(([,d]) => d.net_change < 0).slice(0,3);
+  const maxLen = Math.max(buys.length, sells.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;font-size:11px;';
+    const b = buys[i];
+    const s = sells[i];
+    row.innerHTML = `
+      <div>${b ? `<span style="color:var(--green);font-weight:700">${b[0]}</span> +${b[1].net_change.toLocaleString()}` : ''}</div>
+      <div>${s ? `<span style="color:var(--red);font-weight:700">${s[0]}</span> ${s[1].net_change.toLocaleString()}` : ''}</div>
+    `;
+    container.appendChild(row);
+  }
+
+  // Bar chart for all
+  const allDiv = document.createElement('div');
+  allDiv.style.marginTop = '10px';
+  sorted.forEach(([sym, d]) => {
+    const maxNet = Math.max(...Object.values(cot).map(x => Math.abs(x.net)));
+    const pct = maxNet > 0 ? Math.abs(d.net) / maxNet * 50 : 0;
+    const color = d.net > 0 ? 'bull' : 'bear';
+    const netStr = d.net > 0 ? `+${(d.net/1000).toFixed(0)}K` : `${(d.net/1000).toFixed(0)}K`;
+    allDiv.innerHTML += `
+      <div class="cot-row">
+        <span class="cot-symbol">${sym}</span>
+        <div class="cot-bar"><div class="cot-fill ${color}" style="width:${pct}%"></div></div>
+        <span class="cot-net" style="color:${d.net>0?'var(--green)':'var(--red)'}">${netStr}</span>
+      </div>`;
+  });
+  container.appendChild(allDiv);
+}
+
+// ============================================================
+// Economic heat map
+// ============================================================
+function renderEcoHeatmap() {
+  const container = document.getElementById('eco-heatmap');
+  const eco = LIVE_DATA.eco;
+  if (!eco) { container.innerHTML = '<div style="color:var(--text2);font-size:12px">Economic data not loaded</div>'; return; }
+
+  const scoreStr  = eco.score > 0 ? `+${eco.score}` : `${eco.score}`;
+  const scoreColor = eco.score > 0 ? 'var(--blue)' : eco.score < 0 ? 'var(--red)' : 'var(--text2)';
+
+  if (!eco.indicators || eco.indicators.length === 0) {
+    container.innerHTML = `
+      <div style="font-size:12px;margin-bottom:10px">
+        Economy score: <strong style="color:${scoreColor}">${scoreStr}</strong>
+        <span style="color:var(--text2);font-size:10px"> (stocks perspective)</span>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;color:var(--text2);line-height:1.6">
+        <strong style="color:var(--text)">Live economic data requires FMP paid plan.</strong><br>
+        Run <code style="background:#e2e8f0;padding:1px 4px;border-radius:3px">python agents/economic_agent.py</code> to check status.<br><br>
+        Score defaults to <strong>0 (Neutral)</strong> until data is available.
+        Upgrade at <a href="https://financialmodelingprep.com" target="_blank" style="color:var(--blue)">financialmodelingprep.com</a>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:600;color:var(--text)">US Economy</span>
+      <span style="font-size:13px;font-weight:800;color:${scoreColor}">${scoreStr}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:0;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text2);padding:3px 0;border-bottom:2px solid var(--border);margin-bottom:4px;">
+      <span>Indicator</span><span style="text-align:right;padding-right:8px">Actual</span><span style="text-align:right;padding-right:8px">Forecast</span><span style="text-align:right">Signal</span>
+    </div>`;
+
+  eco.indicators.forEach(ind => {
+    const outcome = ind.stocks_signal || ind.outcome;
+    let bgCls, signal, sigColor;
+    if (outcome === 'beat')        { bgCls='eco-beat';     signal='▲ Beat';           sigColor='var(--green)'; }
+    else if (outcome === 'miss')   { bgCls='eco-miss';     signal='▼ Miss';           sigColor='var(--red)'; }
+    else if (outcome === 'miss_stocks') { bgCls='eco-inv-beat'; signal='▲ Beat (↑rates)'; sigColor='var(--red)'; }
+    else if (outcome === 'beat_stocks') { bgCls='eco-inv-miss'; signal='▼ Miss (↓rates)'; sigColor='var(--green)'; }
+    else                           { bgCls='eco-inline';   signal='— In-line';        sigColor='var(--text2)'; }
+
+    html += `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:0;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;">
+      <span style="font-size:11px;font-weight:500;color:var(--text)">${ind.label}</span>
+      <span style="font-size:11px;font-weight:700;text-align:right;padding-right:8px;color:var(--text)">${ind.actual ?? '—'}</span>
+      <span style="font-size:11px;text-align:right;padding-right:8px;color:var(--text2)">${ind.estimate ?? '—'}</span>
+      <span style="font-size:10px;font-weight:700;text-align:right;color:${sigColor}">${signal}</span>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+// ============================================================
+// Sentiment
+// ============================================================
+function renderSentiment() {
+  const s = LIVE_DATA.sentiment;
+  if (!s) return;
+
+  const pc = s.put_call;
+  document.getElementById('pc-ratio').textContent = pc.toFixed(2);
+  const pcLabel = pc > 1.2 ? 'Extreme Fear → Contrarian Buy' : pc < 0.7 ? 'Extreme Greed → Contrarian Sell' : 'Neutral';
+  const pcColor = pc > 1.2 ? 'var(--green)' : pc < 0.7 ? 'var(--red)' : 'var(--text2)';
+  document.getElementById('pc-label').textContent = pcLabel;
+  document.getElementById('pc-label').style.color = pcColor;
+  document.getElementById('pc-gauge').style.width = Math.min(pc / 2 * 100, 100) + '%';
+  document.getElementById('pc-gauge').style.background = pcColor;
+
+  document.getElementById('aaii-bull').textContent = s.aaii_bull + '%';
+  document.getElementById('aaii-bull').style.color = s.aaii_bull > 45 ? 'var(--green)' : 'var(--text2)';
+  document.getElementById('aaii-bull-gauge').style.width = s.aaii_bull + '%';
+
+  document.getElementById('aaii-bear').textContent = s.aaii_bear + '%';
+  document.getElementById('aaii-bear').style.color = s.aaii_bear > 45 ? 'var(--red)' : 'var(--text2)';
+  document.getElementById('aaii-bear-gauge').style.width = s.aaii_bear + '%';
+
+  const btcGold = s.btc_gold_ratio;
+  document.getElementById('btc-gold').textContent = btcGold.toFixed(1);
+  const bgLabel = btcGold > 30 ? 'Risk-On' : btcGold < 20 ? 'Risk-Off' : 'Neutral';
+  document.getElementById('btc-gold-label').textContent = bgLabel;
+}
+
+// ============================================================
+// Claude prompt buttons
+// ============================================================
+async function _copyCommand(msg) {
+  // Try modern clipboard API first (works in Chrome/Firefox on file://)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(msg);
+      _showCopyToast(msg);
+      return;
+    } catch(e) {}
+  }
+  // Fallback: off-screen textarea — Safari blocks opacity:0, this works
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = msg;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) { _showCopyToast(msg); return; }
+  } catch(e) {}
+  // Final fallback: always show the modal so the command is visible
+  _showCopyModal(msg);
+}
+
+function _showCopyToast(msg) {
+  let toast = document.getElementById('copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.style.cssText = 'position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#166534;color:#fff;padding:14px 24px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.35);line-height:1.5';
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `✅ Copied to clipboard<br><span style="font-weight:400;font-size:12px;opacity:0.85">Paste into Claude Code terminal: <code style="background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:3px">${msg}</code></span>`;
+  toast.style.display = 'block';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 5000);
+}
+
+function _showCopyModal(msg) {
+  // Remove old modal if exists so it's always re-created fresh
+  const old = document.getElementById('copy-modal');
+  if (old) old.remove();
+
+  // Backdrop
+  const backdrop = document.createElement('div');
+  backdrop.id = 'copy-modal-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9998';
+  backdrop.onclick = () => { backdrop.remove(); document.getElementById('copy-modal')?.remove(); };
+  document.body.appendChild(backdrop);
+
+  const modal = document.createElement('div');
+  modal.id = 'copy-modal';
+  modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #dde1ea;border-radius:10px;padding:20px;z-index:9999;width:420px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,.18)';
+  modal.innerHTML = `
+    <div style="font-size:14px;font-weight:700;color:#1a202c;margin-bottom:4px">Run this command in Claude Code</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px">Copy it, then paste into the Claude Code terminal in VS Code.</div>
+    <input id="copy-modal-input" style="width:100%;background:#f8f9fb;border:1px solid #dde1ea;color:#1a202c;padding:10px;border-radius:6px;font-size:14px;font-family:monospace;box-sizing:border-box" readonly>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button onclick="(()=>{const i=document.getElementById('copy-modal-input');i.select();document.execCommand('copy');this.textContent='Copied!'})()" style="background:#1d4ed8;color:#fff;border:none;padding:7px 16px;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Copy</button>
+      <button onclick="document.getElementById('copy-modal').remove();document.getElementById('copy-modal-backdrop').remove()" style="background:#f1f5f9;color:#1a202c;border:1px solid #dde1ea;padding:7px 16px;border-radius:5px;cursor:pointer;font-size:13px">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  const input = document.getElementById('copy-modal-input');
+  input.value = msg;
+  input.focus();
+  input.select();
+}
+
+// ============================================================
+// Analysis popup system — all results shown inline on dashboard
+// ============================================================
+
+const SIGNAL_FULL = { TEC:'Technicals', COT:'COT', RET:'Retail Sentiment', SEA:'Seasonality', ECO:'Economy', PC:'Put/Call', MOM:'Momentum' };
+const LEVEL_FULL  = { PDH:'Prev Day High', PDL:'Prev Day Low', PDC:'Prev Day Close', PDM:'Prev Day Mid', DO:'Day Open', IBH:'IB High', IBL:'IB Low', ONH:'Overnight High', ONL:'Overnight Low', WO:'Weekly Open', WH:'Weekly High', WL:'Weekly Low', MO:'Monthly Open' };
+
+function _openPopup(title, html) {
+  document.getElementById('analysis-backdrop')?.remove();
+  document.getElementById('analysis-popup')?.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'analysis-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000';
+  backdrop.onclick = () => { backdrop.remove(); document.getElementById('analysis-popup')?.remove(); };
+  document.body.appendChild(backdrop);
+
+  const popup = document.createElement('div');
+  popup.id = 'analysis-popup';
+  popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.22);z-index:1001;width:560px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden';
+  popup.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #dde1ea;flex-shrink:0">
+      <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b">${title}</span>
+      <button onclick="document.getElementById('analysis-popup').remove();document.getElementById('analysis-backdrop').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748b;line-height:1;padding:0 4px">✕</button>
+    </div>
+    <div style="padding:16px 18px;overflow-y:auto;flex:1">${html}</div>
+  `;
+  document.body.appendChild(popup);
+}
+
+function _scoreBar(val) {
+  const color = val > 0 ? '#1d4ed8' : val < 0 ? '#dc2626' : '#94a3b8';
+  const sign  = val > 0 ? '+' : '';
+  return `<span style="display:inline-block;background:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px;min-width:28px;text-align:center">${sign}${val ?? 0}</span>`;
+}
+
+function _biasStyle(bias) {
+  const m = { 'Very Bullish':'#1e3a8a', 'Bullish':'#1d4ed8', 'Neutral':'#64748b', 'Bearish':'#dc2626', 'Very Bearish':'#7f1d1d' };
+  return `color:${m[bias] || '#64748b'};font-weight:700`;
+}
+
+function _symSection(sym) {
+  const pd = LIVE_DATA.prices[sym] || {};
+  const sc = LIVE_DATA.scores[sym] || {};
+  const price = pd.price || 0;
+  const chg   = pd.change_pct ?? 0;
+  const chgColor = chg >= 0 ? '#059669' : '#dc2626';
+  const scoreSign = (sc.total ?? 0) > 0 ? '+' : '';
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <span style="font-size:18px;font-weight:800;color:#1a202c">${sym}</span>
+        <span style="font-size:14px;font-weight:600;color:#1a202c;margin-left:10px">${price ? price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</span>
+        <span style="font-size:12px;color:${chgColor};margin-left:6px">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>
+      </div>
+      <div style="${_biasStyle(sc.bias)};font-size:13px">${scoreSign}${sc.total ?? 0} — ${sc.bias || 'Neutral'}</div>
+    </div>`;
+}
+
+function _signalGrid(sc) {
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">` +
+    ['TEC','COT','RET','SEA','ECO','PC','MOM'].map(k =>
+      `<div style="background:#f8f9fb;border:1px solid #dde1ea;border-radius:6px;padding:7px 8px;text-align:center">
+        <div style="font-size:9px;font-weight:600;text-transform:uppercase;color:#94a3b8;margin-bottom:3px">${SIGNAL_FULL[k]}</div>
+        ${_scoreBar(sc[k] ?? 0)}
+       </div>`
+    ).join('') + `</div>`;
+}
+
+// Compute a concrete entry/stop/TP from S/R levels + score direction
+function _calcEntrySetup(sym) {
+  const sc     = LIVE_DATA.scores[sym] || {};
+  const price  = LIVE_DATA.prices[sym]?.price || 0;
+  const cfg    = FUTURES_CONFIG[sym] || {};
+  const levels = LIVE_DATA.levels[sym] || [];
+  if (!price || !levels.length) return null;
+
+  const total = sc.total ?? 0;
+  const dir   = total >= 0 ? 'long' : 'short';
+
+  const supports    = levels.filter(l => l.type === 'support'    && l.price < price).sort((a,b) => b.price - a.price);
+  const resistances = levels.filter(l => l.type === 'resistance' && l.price > price).sort((a,b) => a.price - b.price);
+  const allByDist   = [...levels].sort((a,b) => a.distance_pts - b.distance_pts);
+
+  let entry, stop, tp1, tp2, entryLabel, stopLabel, tp1Label, tp2Label;
+
+  if (dir === 'long') {
+    // Enter at nearest support (or current price if no support below)
+    const entryLvl = supports[0] || allByDist.find(l => l.type !== 'resistance');
+    const stopLvl  = supports[1] || supports[0];
+    const tp1Lvl   = resistances[0];
+    const tp2Lvl   = resistances[1];
+    if (!entryLvl) return null;
+    entry      = entryLvl.price;
+    stop       = stopLvl ? +(stopLvl.price - stopLvl.price * 0.001).toFixed(cfg.decimals || 2) : +(entry * 0.994).toFixed(cfg.decimals || 2);
+    tp1        = tp1Lvl ? tp1Lvl.price : +(entry * 1.012).toFixed(cfg.decimals || 2);
+    tp2        = tp2Lvl ? tp2Lvl.price : +(entry * 1.025).toFixed(cfg.decimals || 2);
+    entryLabel = LEVEL_FULL[entryLvl.label] || entryLvl.label;
+    stopLabel  = stopLvl ? (LEVEL_FULL[stopLvl.label] || stopLvl.label) : 'below support';
+    tp1Label   = tp1Lvl  ? (LEVEL_FULL[tp1Lvl.label]  || tp1Lvl.label)  : 'projected';
+    tp2Label   = tp2Lvl  ? (LEVEL_FULL[tp2Lvl.label]  || tp2Lvl.label)  : 'projected';
+  } else {
+    // Enter at nearest resistance
+    const entryLvl = resistances[0] || allByDist.find(l => l.type !== 'support');
+    const stopLvl  = resistances[1] || resistances[0];
+    const tp1Lvl   = supports[0];
+    const tp2Lvl   = supports[1];
+    if (!entryLvl) return null;
+    entry      = entryLvl.price;
+    stop       = stopLvl ? +(stopLvl.price + stopLvl.price * 0.001).toFixed(cfg.decimals || 2) : +(entry * 1.006).toFixed(cfg.decimals || 2);
+    tp1        = tp1Lvl ? tp1Lvl.price : +(entry * 0.988).toFixed(cfg.decimals || 2);
+    tp2        = tp2Lvl ? tp2Lvl.price : +(entry * 0.975).toFixed(cfg.decimals || 2);
+    entryLabel = LEVEL_FULL[entryLvl.label] || entryLvl.label;
+    stopLabel  = stopLvl ? (LEVEL_FULL[stopLvl.label] || stopLvl.label) : 'above resistance';
+    tp1Label   = tp1Lvl  ? (LEVEL_FULL[tp1Lvl.label]  || tp1Lvl.label)  : 'projected';
+    tp2Label   = tp2Lvl  ? (LEVEL_FULL[tp2Lvl.label]  || tp2Lvl.label)  : 'projected';
+  }
+
+  const riskPts   = Math.abs(entry - stop);
+  const rewardPts = Math.abs(tp1 - entry);
+  const rr1       = riskPts > 0 ? (rewardPts / riskPts).toFixed(1) : '—';
+  const rr2       = riskPts > 0 ? (Math.abs(tp2 - entry) / riskPts).toFixed(1) : '—';
+
+  return { dir, entry, stop, tp1, tp2, entryLabel, stopLabel, tp1Label, tp2Label, riskPts, rr1, rr2 };
+}
+
+function _entryBox(sym) {
+  const setup = _calcEntrySetup(sym);
+  if (!setup) return '<div style="color:#94a3b8;font-size:12px;padding:8px 0">No S/R levels loaded — run calculate_daily_levels.py</div>';
+
+  const dirColor = setup.dir === 'long' ? '#059669' : '#dc2626';
+  const dirLabel = setup.dir === 'long' ? 'LONG' : 'SHORT';
+  const p = (v, s) => formatPrice(s || sym, v);
+  const rrColor1 = parseFloat(setup.rr1) >= 2 ? '#059669' : parseFloat(setup.rr1) >= 1.5 ? '#d97706' : '#dc2626';
+
+  return `
+    <div style="background:#f8f9fb;border:1px solid #dde1ea;border-radius:8px;padding:14px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="background:${dirColor};color:#fff;font-weight:800;font-size:11px;padding:3px 10px;border-radius:4px">${dirLabel}</span>
+        <span style="font-size:11px;color:#64748b">Based on nearest S/R levels — verify on TradingView</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:#fff;border:1px solid #dde1ea;border-radius:6px;padding:10px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Entry</div>
+          <div style="font-size:16px;font-weight:800;font-family:monospace;color:#1a202c">${p(setup.entry)}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${setup.entryLabel}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Stop</div>
+          <div style="font-size:16px;font-weight:800;font-family:monospace;color:#dc2626">${p(setup.stop)}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${setup.stopLabel}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:6px;padding:10px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Target 1 <span style="color:${rrColor1}">${setup.rr1}:1</span></div>
+          <div style="font-size:16px;font-weight:800;font-family:monospace;color:#059669">${p(setup.tp1)}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${setup.tp1Label}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:6px;padding:10px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Target 2 <span style="color:#059669">${setup.rr2}:1</span></div>
+          <div style="font-size:16px;font-weight:800;font-family:monospace;color:#059669">${p(setup.tp2)}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${setup.tp2Label}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _levelRows(sym, limit) {
+  const price  = LIVE_DATA.prices[sym]?.price || 0;
+  const levels = (LIVE_DATA.levels[sym] || []).sort((a,b) => a.distance_pts - b.distance_pts);
+  const list   = limit ? levels.slice(0, limit) : levels;
+  if (!list.length) return '<div style="color:#94a3b8;font-size:12px">No levels loaded</div>';
+  return list.map(lvl => {
+    const dir   = lvl.price > price ? '↑' : '↓';
+    const color = lvl.type === 'support' ? '#059669' : lvl.type === 'resistance' ? '#dc2626' : '#1d4ed8';
+    const lbl   = LEVEL_FULL[lvl.label] || lvl.label;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">
+      <span style="border-left:3px solid ${color};padding-left:6px;font-size:11px;font-weight:700;color:#64748b;min-width:110px">${lbl}</span>
+      <span style="font-weight:600;flex:1;font-variant-numeric:tabular-nums">${formatPrice(sym, lvl.price)}</span>
+      <span style="font-size:11px;color:#64748b">${dir}${lvl.distance_pts.toFixed(1)} pts</span>
+      <span style="font-size:10px;color:#94a3b8;min-width:70px;text-align:right">${lvl.role || lvl.type}</span>
+    </div>`;
+  }).join('');
+}
+
+// ---- Individual popup functions ----
+
+function showFullAnalysis(sym) {
+  if (!sym) return;
+  const sc  = LIVE_DATA.scores[sym] || {};
+  const cot = LIVE_DATA.cot?.[sym];
+  const scoreSign = (sc.total ?? 0) > 0 ? '+' : '';
+  let html = _symSection(sym);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px">Entry Setup</div>`;
+  html += _entryBox(sym);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin:14px 0 8px">Signal Breakdown</div>`;
+  html += _signalGrid(sc);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin:12px 0 8px">Key Levels</div>`;
+  html += _levelRows(sym, 0);
+  if (cot) {
+    const netStr = cot.net > 0 ? `+${(cot.net/1000).toFixed(0)}K` : `${(cot.net/1000).toFixed(0)}K`;
+    const chgStr = cot.net_change > 0 ? `+${(cot.net_change/1000).toFixed(0)}K` : `${(cot.net_change/1000).toFixed(0)}K`;
+    html += `<div style="margin-top:14px;padding:10px;background:#f8f9fb;border-radius:6px;border:1px solid #dde1ea;font-size:12px">
+      <div style="font-weight:700;margin-bottom:4px">COT — Institutional Positioning</div>
+      <div style="display:flex;gap:20px">
+        <span>Net position: <strong style="color:${cot.net>0?'#059669':'#dc2626'}">${netStr}</strong></span>
+        <span>Week change: <strong style="color:${cot.net_change>0?'#059669':'#dc2626'}">${chgStr}</strong></span>
+      </div>
+    </div>`;
+  }
+  _openPopup(`Full Analysis — ${sym}`, html);
+}
+
+function showQuickSnap(sym) {
+  if (!sym) return;
+  const sc = LIVE_DATA.scores[sym] || {};
+  let html = _symSection(sym);
+  html += _entryBox(sym);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin:14px 0 8px">Signals</div>`;
+  html += _signalGrid(sc);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px">Nearest Levels</div>`;
+  html += _levelRows(sym, 6);
+  _openPopup(`Quick Snap — ${sym}`, html);
+}
+
+function showSRLevels(sym) {
+  if (!sym) return;
+  let html = _symSection(sym);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px">All S/R Levels</div>`;
+  html += _levelRows(sym, 0);
+  _openPopup(`S/R Levels — ${sym} (${currentTF})`, html);
+}
+
+function showScoreBreakdown(sym) {
+  if (!sym) return;
+  const sc = LIVE_DATA.scores[sym] || {};
+  let html = _symSection(sym);
+  html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:8px">Signal Breakdown</div>`;
+  html += _signalGrid(sc);
+  const rows = ['TEC','COT','RET','SEA','ECO','PC','MOM'].map(k => {
+    const v = sc[k] ?? 0;
+    const desc = v > 0 ? 'Bullish signal' : v < 0 ? 'Bearish signal' : 'Neutral';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">
+      <span style="font-size:12px;font-weight:600">${SIGNAL_FULL[k]}</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;color:#94a3b8">${desc}</span>
+        ${_scoreBar(v)}
+      </div>
+    </div>`;
+  });
+  html += rows.join('');
+  _openPopup(`Score Breakdown — ${sym}`, html);
+}
+
+function showFuturesScan() {
+  const FUTURES = ['MES','MNQ','MYM','MCL','MGC','MSI','MNG','M2K'];
+  const rows = FUTURES.map(sym => {
+    const sc = LIVE_DATA.scores[sym] || {};
+    const pd = LIVE_DATA.prices[sym] || {};
+    const total = sc.total ?? 0;
+    const scoreSign = total > 0 ? '+' : '';
+    const chg = pd.change_pct ?? 0;
+    const chgColor = chg >= 0 ? '#059669' : '#dc2626';
+    return { sym, total, sc, pd, chg, chgColor };
+  }).sort((a,b) => b.total - a.total);
+
+  const html = `
+    <div style="margin-bottom:8px;font-size:12px;color:#64748b">All 8 micro futures ranked by score</div>
+    ${rows.map(r => `
+      <div onclick="showFullAnalysis('${r.sym}')" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer;border:1px solid #dde1ea;margin-bottom:6px;background:#fff" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+        <span style="font-weight:800;font-size:14px;min-width:36px">${r.sym}</span>
+        <span style="font-size:13px;font-weight:600;flex:1;font-variant-numeric:tabular-nums">${r.pd.price ? r.pd.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</span>
+        <span style="font-size:11px;color:${r.chgColor}">${r.chg >= 0 ? '+' : ''}${r.chg.toFixed(2)}%</span>
+        ${_scoreBar(r.total)}
+        <span style="${_biasStyle(r.sc.bias)};font-size:11px;min-width:80px;text-align:right">${r.sc.bias || 'Neutral'}</span>
+      </div>`).join('')}
+    <div style="font-size:10px;color:#94a3b8;margin-top:8px">Click any row for full analysis</div>`;
+  _openPopup('Futures Scan', html);
+}
+
+function showDailyBias() {
+  const ALL = ['MES','MNQ','MYM','MCL','MGC','MSI','MNG','M2K','SPY','QQQ','AAPL','NVDA','TSLA','MSFT'];
+  const html = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+      ${ALL.filter(s => LIVE_DATA.scores[s]).map(sym => {
+        const sc = LIVE_DATA.scores[sym] || {};
+        const total = sc.total ?? 0;
+        const scoreSign = total > 0 ? '+' : '';
+        return `<div onclick="showFullAnalysis('${sym}')" style="padding:10px;border:1px solid #dde1ea;border-radius:7px;cursor:pointer;text-align:center" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+          <div style="font-weight:800;font-size:13px">${sym}</div>
+          <div style="font-size:11px;${_biasStyle(sc.bias)};margin:3px 0">${scoreSign}${total}</div>
+          <div style="font-size:10px;color:#94a3b8">${sc.bias || 'Neutral'}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:8px">Click any tile for full analysis</div>`;
+  _openPopup('Daily Bias', html);
+}
+
+function showBestEntry() {
+  const allSyms = Object.keys(LIVE_DATA.scores || {});
+  const THRESHOLD = 5;
+
+  // Qualifying symbols (score meets threshold)
+  let qualifying = allSyms.map(sym => {
+    const sc    = LIVE_DATA.scores[sym] || {};
+    const price = LIVE_DATA.prices[sym]?.price || 0;
+    const setup = _calcEntrySetup(sym);
+    return { sym, total: sc.total ?? 0, bias: sc.bias, price, sc, setup };
+  }).filter(c => Math.abs(c.total) >= THRESHOLD).sort((a,b) => Math.abs(b.total) - Math.abs(a.total));
+
+  // Always include selected symbol (even if below threshold)
+  const selectedEntry = selectedSymbol && !qualifying.find(c => c.sym === selectedSymbol)
+    ? (() => {
+        const sc    = LIVE_DATA.scores[selectedSymbol] || {};
+        const price = LIVE_DATA.prices[selectedSymbol]?.price || 0;
+        const setup = _calcEntrySetup(selectedSymbol);
+        return { sym: selectedSymbol, total: sc.total ?? 0, bias: sc.bias, price, sc, setup, belowThreshold: true };
+      })()
+    : null;
+
+  const candidates = selectedEntry ? [selectedEntry, ...qualifying] : qualifying;
+
+  if (!candidates.length) {
+    _openPopup('Best Entry', '<div style="color:#94a3b8;font-size:13px;padding:20px 0;text-align:center">No qualifying setups right now. Select a symbol from the watchlist to see its setup regardless of score.</div>');
+    return;
+  }
+
+  const rows = candidates.map(c => {
+    const dir      = c.total >= 0 ? 'Long' : 'Short';
+    const dirColor = c.total >= 0 ? '#059669' : '#dc2626';
+    const setup    = c.setup;
+    const belowNote = c.belowThreshold ? `<span style="font-size:9px;color:#d97706;font-weight:600;margin-left:4px">below threshold</span>` : '';
+
+    let entryInfo = '';
+    if (setup) {
+      const p = (v) => formatPrice(c.sym, v);
+      const rrColor = parseFloat(setup.rr1) >= 2 ? '#059669' : parseFloat(setup.rr1) >= 1.5 ? '#d97706' : '#dc2626';
+      entryInfo = `
+        <div style="font-size:11px;margin-top:6px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+          <div><span style="color:#94a3b8">Entry</span> <strong style="font-family:monospace">${p(setup.entry)}</strong></div>
+          <div><span style="color:#dc2626">Stop</span> <strong style="font-family:monospace">${p(setup.stop)}</strong></div>
+          <div><span style="color:#059669">TP1</span> <strong style="font-family:monospace">${p(setup.tp1)}</strong> <span style="color:${rrColor};font-size:10px">${setup.rr1}:1</span></div>
+        </div>`;
+    } else {
+      entryInfo = `<div style="font-size:10px;color:#94a3b8;margin-top:4px">No levels loaded — run calculate_daily_levels.py</div>`;
+    }
+
+    return `<div onclick="showFullAnalysis('${c.sym}')" style="padding:10px 12px;border:1px solid #dde1ea;border-radius:7px;margin-bottom:8px;cursor:pointer" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-weight:800;font-size:14px">${c.sym}${belowNote}</span>
+        <span style="background:${dirColor};color:#fff;font-size:10px;font-weight:700;padding:1px 8px;border-radius:3px">${dir}</span>
+        <span style="flex:1;font-size:12px;font-variant-numeric:tabular-nums">${formatPrice(c.sym, c.price)}</span>
+        ${_scoreBar(c.total)}
+        <span style="${_biasStyle(c.bias)};font-size:11px">${c.bias}</span>
+      </div>
+      ${entryInfo}
+    </div>`;
+  });
+
+  const html = `
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px">Score ≥ +${THRESHOLD} or ≤ −${THRESHOLD} required. Click any row for full analysis.</div>
+    ${rows.join('')}`;
+  _openPopup('Best Entry Setups', html);
+}
+
+function showCOTDetail() {
+  const cot = LIVE_DATA.cot;
+  if (!cot) { _openPopup('COT Detail', '<div style="color:#94a3b8">COT data not loaded — run morning_setup.py</div>'); return; }
+  const sorted = Object.entries(cot).sort((a,b) => b[1].net - a[1].net);
+  const html = `
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px">Non-commercial net positions (institutional)</div>
+    ${sorted.map(([sym, d]) => {
+      const netStr = d.net > 0 ? `+${(d.net/1000).toFixed(1)}K` : `${(d.net/1000).toFixed(1)}K`;
+      const chgStr = d.net_change > 0 ? `+${(d.net_change/1000).toFixed(1)}K` : `${(d.net_change/1000).toFixed(1)}K`;
+      const color  = d.net > 0 ? '#059669' : '#dc2626';
+      const chgColor = d.net_change > 0 ? '#059669' : d.net_change < 0 ? '#dc2626' : '#94a3b8';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+        <span style="font-weight:800;min-width:44px">${sym}</span>
+        <div style="flex:1;height:6px;background:#f1f5f9;border-radius:3px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;height:100%;width:${Math.min(Math.abs(d.net)/1000,50)}%;${d.net>0?'left:50%':'right:50%'};background:${color};border-radius:3px"></div>
+        </div>
+        <span style="color:${color};font-weight:700;min-width:60px;text-align:right">${netStr}</span>
+        <span style="color:${chgColor};font-size:11px;min-width:55px;text-align:right">${chgStr} wk</span>
+      </div>`;
+    }).join('')}`;
+  _openPopup('COT — Institutional Positioning', html);
+}
+
+// ============================================================
+// Live price fetching via Yahoo Finance
+// ============================================================
+const YF_SYMBOL_MAP = {
+  MES:'MES=F', MNQ:'MNQ=F', MYM:'MYM=F', MCL:'CL=F',
+  MGC:'GC=F',  MSI:'SI=F',  MNG:'NG=F',  M2K:'RTY=F',
+  ES:'ES=F',   NQ:'NQ=F',   YM:'YM=F',
+  CL:'CL=F',   GC:'GC=F',   SI:'SI=F',   NG:'NG=F',
+  SPY:'SPY',   QQQ:'QQQ',   AAPL:'AAPL', NVDA:'NVDA',
+  TSLA:'TSLA', MSFT:'MSFT',
+  // Forex — Yahoo Finance uses XXXYYY=X format
+  EURUSD:'EURUSD=X', GBPUSD:'GBPUSD=X', USDJPY:'USDJPY=X',
+  USDCHF:'USDCHF=X', AUDUSD:'AUDUSD=X', NZDUSD:'NZDUSD=X', USDCAD:'USDCAD=X',
+  EURGBP:'EURGBP=X', EURJPY:'EURJPY=X', GBPJPY:'GBPJPY=X', EURCHF:'EURCHF=X',
+  AUDCAD:'AUDCAD=X', CADJPY:'CADJPY=X', AUDNZD:'AUDNZD=X', NZDJPY:'NZDJPY=X',
+  GBPAUD:'GBPAUD=X', NZDCAD:'NZDCAD=X',
+};
+
+async function fetchPrice(sym) {
+  const yfSym = YF_SYMBOL_MAP[sym] || sym;
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yfSym}?interval=1d&range=5d`;
+    const r = await fetch(url);
+    const j = await r.json();
+    const result = j?.chart?.result?.[0];
+    if (!result) return null;
+
+    // regularMarketPrice is always the live/last price (works for open forex markets
+    // where the current daily bar hasn't closed yet and closes array ends in null)
+    const livePrice = result.meta?.regularMarketPrice || null;
+    const closes    = (result.indicators?.quote?.[0]?.close || []).filter(c => c != null);
+    if (!closes.length && !livePrice) return null;
+
+    // Current price: prefer live meta price; fall back to last valid close
+    const price = livePrice || closes[closes.length - 1];
+    // Previous close: last element of closes array (the completed daily bar before today)
+    const prev  = closes.length >= 2 ? closes[closes.length - (livePrice ? 1 : 2)]
+                : closes[0];
+    if (!price || !prev) return null;
+    const change_pct = ((price - prev) / prev * 100);
+    return { price, prev, change_pct };
+  } catch(e) {
+    return null;
+  }
+}
+
+async function refreshAllPrices() {
+  const syms = Object.keys(FUTURES_CONFIG);
+  const results = await Promise.allSettled(syms.map(s => fetchPrice(s)));
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value) {
+      LIVE_DATA.prices[syms[i]] = r.value;
+    }
+  });
+  renderWatchlist();
+  if (selectedSymbol) {
+    renderTechSignals(selectedSymbol);
+    renderLevels(selectedSymbol);
+  }
+  lastRefresh = new Date();
+  document.getElementById('refresh-info').textContent =
+    `Last refresh: ${lastRefresh.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false})} ET`;
+}
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  renderWatchlist();
+  renderCOT();
+  renderEcoHeatmap();
+  renderSentiment();
+  refreshAllPrices();
+}
+
+// Refresh every 60 seconds
+setInterval(refreshAllPrices, 60_000);
+
+init();
+</script>
+</body>
+</html>
