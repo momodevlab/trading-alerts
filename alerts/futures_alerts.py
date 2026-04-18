@@ -54,11 +54,17 @@ from alerts.strategy_engine import (
     _fmt,
     _decimals,
 )
+from brokers.oanda_client import get_client as get_oanda_client
+from brokers.tradovate_client import get_client as get_tradovate_client
 
 # Strategy instances (shared across loop iterations)
 _futures_strategy  = FuturesStrategy()
 _forex_strategy    = ForexStrategy()
 _gap_fill_strategy = GapFillStrategy()
+
+# Broker clients
+_oanda    = get_oanda_client()
+_tradovate = get_tradovate_client()
 
 BASE_DIR  = Path(__file__).parent.parent
 LOG_FILE  = BASE_DIR / "data" / "alerts_log.json"
@@ -441,6 +447,18 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 result['alerts_fired'].append(cooldown_key)
                 print(f"  [{symbol}] GAP FILL — {gf_sig.direction} entry {gf_sig.entry:.2f} "
                       f"→ PDC {gf_sig.tp1:.2f}")
+
+                # Auto-execute futures orders via Tradovate (dormant until $500 funded)
+                if _tradovate.is_safe_to_trade():
+                    _tradovate.place_bracket_order(
+                        symbol=gf_sig.symbol,
+                        direction=gf_sig.direction,
+                        qty=1,
+                        entry=gf_sig.entry,
+                        stop=gf_sig.stop,
+                        tp1=gf_sig.tp1,
+                        strategy=gf_sig.strategy,
+                    )
             return   # gap fill takes priority — don't also fire VWAP/ORB at open
 
     # ── VWAP Pullback / ORB (futures) or EMA Pullback (forex) ─────────────
@@ -460,6 +478,32 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
     fire_alert(msg, alert_type=cooldown_type, symbol=symbol)
     result['alerts_fired'].append(cooldown_type)
     print(f"  [{symbol}] Strategy signal: {sig.strategy} — entry {sig.entry}")
+
+    # Auto-execute via broker (only if AUTO_TRADE_ENABLED=true and credentials set)
+    if is_futures:
+        # Tradovate — futures ($500+ account, dormant until you tell me to activate)
+        if _tradovate.is_safe_to_trade():
+            _tradovate.place_bracket_order(
+                symbol=sig.symbol,
+                direction=sig.direction,
+                qty=1,
+                entry=sig.entry,
+                stop=sig.stop,
+                tp1=sig.tp1,
+                strategy=sig.strategy,
+            )
+    else:
+        # Oanda — forex ($100+ account)
+        if _oanda.is_safe_to_trade():
+            _oanda.place_order(
+                symbol=sig.symbol,
+                direction=sig.direction,
+                entry=sig.entry,
+                stop=sig.stop,
+                tp1=sig.tp1,
+                strategy=sig.strategy,
+                order_type="LIMIT",
+            )
 
 
 # ---------------------------------------------------------------------------
