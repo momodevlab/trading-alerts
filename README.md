@@ -1,9 +1,8 @@
 # Trading Research & Alert System
 
-A local research, dashboard, and alert system for manual futures and stock trading.
-**This system does NOT connect to any broker and does NOT place any trades.**
-It monitors markets, scores setups, and sends alerts via Telegram so you can decide
-whether to trade manually in your own platform.
+A research, dashboard, alert, and automated execution system for futures and forex trading.
+Monitors markets 24/5, scores setups across 7 signals, sends Telegram alerts, and
+automatically executes orders through connected broker accounts.
 
 ---
 
@@ -227,8 +226,11 @@ trading-system/
 ├── agents/
 │   ├── cot_agent.py             ← CFTC COT fetcher, parser, scorer
 │   └── economic_agent.py        ← FMP economic heat map builder
+├── brokers/
+│   ├── oanda_client.py          ← Oanda v20 REST client (forex, active)
+│   └── tradovate_client.py      ← Tradovate REST client (futures, dormant until $500)
 ├── alerts/
-│   ├── futures_alerts.py        ← main futures monitoring loop
+│   ├── futures_alerts.py        ← main monitoring loop + broker execution
 │   ├── stock_alerts.py          ← stock + options monitoring loop
 │   ├── alert_engine.py          ← scoring, levels, patterns, formatting
 │   └── notifier.py              ← Telegram + terminal + log
@@ -264,12 +266,34 @@ All Telegram alerts use these emoji prefixes so you can scan them quickly:
 | ⚡ | Stock day trade alert |
 | 📊 | Morning brief / daily levels |
 | ⚠️ | Warning / economic event |
+| 📈 (ORDER PLACED) | Auto-executed order confirmation |
+| ⚠️ (ORDER FAILED) | Auto-execution failed — manual entry needed |
+
+---
+
+## Broker integration
+
+| Broker | Asset class | Status | Activation |
+|--------|-------------|--------|------------|
+| Oanda (v20 REST) | Forex — all major/minor pairs | Active | `AUTO_TRADE_ENABLED=true` in `.env` |
+| Tradovate | Futures — MES, MNQ, MYM, MCL, MGC, MSI, MNG, M2K | Dormant | Activate when account ≥ $500 |
+
+When a strategy signal fires:
+1. Telegram alert sent immediately
+2. Oanda/Tradovate order placed automatically (limit order with stop + TP attached)
+3. Telegram confirmation sent with order details, lot size, and dollar risk
+
+Lot size is calculated automatically from `ACCOUNT_SIZE` and `RISK_PCT` so risk
+stays consistent as the account grows.
+
+**To disable auto-execution** (alerts only): set `AUTO_TRADE_ENABLED=false` in `.env`.
 
 ---
 
 ## Notes
 
-- **No automated trading** — all trade execution is manual in your own platform
+- **Forex automation** — Oanda v20 REST API, 24/5 across Asian/London/NY sessions
+- **Futures automation** — Tradovate, dormant until account is funded to $500+
 - **FMP free tier** — 250 requests/day. The system caches aggressively: COT 24h, economic 6h
 - **Score system** — 7 signals × (-2 to +2) = -14 to +14 total. Alert threshold: ±5 futures, ±7 stocks
 - **R:R minimum** — 1.5:1 required for any alerted setup
