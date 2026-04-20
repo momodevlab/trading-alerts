@@ -114,15 +114,11 @@ def fire_alert(message: str, alert_type: str = "INFO", symbol: str = "") -> None
     # 1. Terminal
     print_alert(message)
 
-    # 2. Telegram (run async in whatever loop is available)
+    # 2. Telegram — always use asyncio.run() for a fresh, reliable event loop
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(send_telegram(message))
-        else:
-            loop.run_until_complete(send_telegram(message))
-    except RuntimeError:
         asyncio.run(send_telegram(message))
+    except Exception as e:
+        print(f"[notifier] Telegram send failed: {e}")
 
     # 3. Append to log
     try:

@@ -804,7 +804,9 @@ def _maybe_heartbeat(results: list) -> None:
         return
     _last_heartbeat = now
 
-    parts = [f"{r['symbol']}={r.get('price', 0):,.0f}" for r in results if r.get('price')]
+    def _fmt_price(p):
+        return f"{p:,.4f}" if p < 100 else f"{p:,.2f}"
+    parts = [f"{r['symbol']}={_fmt_price(r['price'])}" for r in results if r.get('price')]
     ts = _et_time_str()
     print(f"[{ts} ET] Monitoring: {' | '.join(parts)}")
 

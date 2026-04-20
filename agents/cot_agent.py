@@ -279,7 +279,6 @@ def fetch_cot(force: bool = False) -> dict:
     if not force and _cache_is_fresh():
         cached = _load_cache()
         if cached:
-            print("[cot_agent] Using cached COT data.")
             return cached["data"]
 
     year = datetime.now().year
