@@ -210,6 +210,17 @@ class OandaClient:
         data = self._get(f"/v3/accounts/{self.account_id}/openTrades")
         return data.get("trades", []) if data else []
 
+    def _get_available_balance(self) -> float:
+        """
+        Return the margin available for new trades from Oanda live.
+        Uses marginAvailable (what Oanda will actually let you trade with),
+        which accounts for the 50% hold on new deposits and any open margin.
+        """
+        summary = self.get_account_summary()
+        if summary:
+            return float(summary.get("marginAvailable", 0))
+        return 0.0
+
     # ------------------------------------------------------------------
     # Safety checks
     # ------------------------------------------------------------------
@@ -270,13 +281,22 @@ class OandaClient:
         """
         Place a forex order with stop loss and take profit.
 
-        Lot size is calculated automatically from RISK_PCT and ACCOUNT_SIZE.
-        E.g. $100 account, 2% risk, 20-pip stop on EURUSD = 0.01 lot (1000 units).
+        Lot size is calculated from the live available balance fetched from Oanda
+        right before placing, using RISK_PCT. This means:
+          - Account at $60 available → risk $1.20/trade (2%)
+          - Account at $120 available → risk $2.40/trade (2%)
+          - Scales automatically as the account grows.
 
         Returns the Oanda order response dict, or None on failure.
         Logs to data/trade_log.json.
         """
-        risk_usd = ACCOUNT_SIZE * (RISK_PCT / 100)
+        # Fetch live available balance — never use stale ACCOUNT_SIZE for sizing
+        live_balance = self._get_available_balance()
+        if live_balance <= 0:
+            log.error("[Oanda] Could not fetch available balance — skipping order")
+            return None
+
+        risk_usd = live_balance * (RISK_PCT / 100)
         units    = calc_units(symbol, direction, entry, stop, risk_usd)
 
         if units == 0:
@@ -392,13 +412,19 @@ class OandaClient:
                 stop_pips=stop_pips, tp1_pips=tp1_pips,
                 risk_usd=risk_usd, lot_size=round(abs(units) / 100_000, 5),
                 order_type=order_type, strategy=strategy,
+                live_balance=live_balance,
             )
         else:
             error_msg = ""
+            cancel_reason = ""
             if response:
-                error_msg = response.get("errorMessage", str(response))
-            log.error(f"[Oanda] Order failed: {error_msg}")
-            self._send_failure_alert(symbol, direction, error_msg)
+                error_msg     = response.get("errorMessage", "")
+                # Oanda puts cancel reason inside orderCancelTransaction
+                cancel_tx     = response.get("orderCancelTransaction", {})
+                cancel_reason = cancel_tx.get("reason", error_msg or str(response))
+            log.error(f"[Oanda] Order failed/cancelled: {cancel_reason or error_msg}")
+            self._send_cancel_alert(symbol, direction, entry, stop, tp1,
+                                    risk_usd, cancel_reason or error_msg, strategy)
 
         return response
 
@@ -540,7 +566,7 @@ class OandaClient:
 
     def _send_execution_alert(self, symbol, direction, units, entry, stop,
                                tp1, stop_pips, tp1_pips, risk_usd, lot_size,
-                               order_type, strategy) -> None:
+                               order_type, strategy, live_balance=0.0) -> None:
         """Send Telegram confirmation when an order is successfully placed."""
         try:
             from alerts.notifier import fire_alert
@@ -557,25 +583,42 @@ class OandaClient:
                 f"Stop:   {stop:.{dec}f}  ({stop_pips:.1f} pips | ${risk_usd:.2f} risk)\n"
                 f"TP1:    {tp1:.{dec}f}  ({tp1_pips:.1f} pips | R:R {rr}:1)\n\n"
                 f"Size: {abs(units):,} units ({lot_size:.5f} lots)\n"
-                f"Account: ${ACCOUNT_SIZE} | Risk: {RISK_PCT}% = ${risk_usd:.2f}"
+                f"Available balance: ${live_balance:.2f} | Risk: {RISK_PCT}% = ${risk_usd:.2f}"
             )
             fire_alert(msg, alert_type="ORDER_PLACED", symbol=symbol)
         except Exception as e:
             log.error(f"[Oanda] Failed to send execution alert: {e}")
 
-    def _send_failure_alert(self, symbol: str, direction: str, error: str) -> None:
-        """Send Telegram alert when an order fails."""
+    def _send_cancel_alert(self, symbol: str, direction: str, entry: float,
+                           stop: float, tp1: float, risk_usd: float,
+                           reason: str, strategy: str) -> None:
+        """Send Telegram alert when Oanda cancels or rejects an order."""
         try:
             from alerts.notifier import fire_alert
+            dec = 5 if pip_size(symbol) == 0.0001 else 3
+
+            # Make the reason human-readable
+            reason_map = {
+                "INSUFFICIENT_MARGIN": "Insufficient margin — available balance too low for this lot size",
+                "MARKET_HALTED":       "Market halted — trading paused on this pair",
+                "CLOSING_MARKET":      "Market closing — order rejected near session end",
+                "ACCOUNT_NOT_TRADEABLE_ON_FILL": "Account not tradeable",
+            }
+            friendly = reason_map.get(reason, reason)
+
+            live_balance = self._get_available_balance()
+
             msg = (
-                f"⚠️ <b>ORDER FAILED — {symbol}</b>\n"
-                f"Direction: {direction.capitalize()}\n"
-                f"Error: {error}\n\n"
-                f"Check your Oanda account — manual entry may be needed."
+                f"⚠️ <b>ORDER CANCELLED — {symbol}</b>\n"
+                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+                f"Entry: {entry:.{dec}f} | Stop: {stop:.{dec}f} | TP: {tp1:.{dec}f}\n\n"
+                f"Reason: {friendly}\n"
+                f"Available balance: ${live_balance:.2f} | Attempted risk: ${risk_usd:.2f}\n\n"
+                f"No position opened — manual entry needed if you want this trade."
             )
-            fire_alert(msg, alert_type="ORDER_FAILED", symbol=symbol)
+            fire_alert(msg, alert_type="ORDER_CANCELLED", symbol=symbol)
         except Exception as e:
-            log.error(f"[Oanda] Failed to send failure alert: {e}")
+            log.error(f"[Oanda] Failed to send cancel alert: {e}")
 
     def close_all_trades(self) -> None:
         """Close all open trades — use in emergencies."""
@@ -607,13 +650,13 @@ class OandaClient:
 
     def status_summary(self) -> str:
         """Return a one-line status string for logging."""
-        mode = "PRACTICE" if self.paper else "LIVE"
-        auto = "ON" if AUTO_TRADE else "OFF"
-        bal  = self.get_balance()
-        risk = round(ACCOUNT_SIZE * RISK_PCT / 100, 2)
+        mode      = "PRACTICE" if self.paper else "LIVE"
+        auto      = "ON" if AUTO_TRADE else "OFF"
+        available = self._get_available_balance()
+        risk      = round(available * RISK_PCT / 100, 2)
         return (
             f"Oanda {mode} | Auto-trade {auto} | "
-            f"Balance: ${bal:.2f} | Risk/trade: ${risk:.2f} ({RISK_PCT}%) | "
+            f"Available: ${available:.2f} | Risk/trade: ${risk:.2f} ({RISK_PCT}%) | "
             f"Today: {self._trades_today}/{MAX_TRADES} trades | "
             f"Daily P&L: ${self._daily_pnl:+.2f}"
         )
