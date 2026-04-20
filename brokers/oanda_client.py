@@ -253,14 +253,16 @@ class OandaClient:
     def is_safe_to_trade(self) -> bool:
         """All safety checks must pass before any order is placed."""
         if not self.account_id or not self.token:
-            log.warning("[Oanda] Missing credentials — check OANDA_ACCOUNT_ID and OANDA_API_TOKEN in .env")
+            print("[Oanda] ❌ Missing credentials — OANDA_ACCOUNT_ID or OANDA_API_TOKEN not set")
             return False
         if not AUTO_TRADE:
-            log.info("[Oanda] AUTO_TRADE_ENABLED=false — alert only, no order")
+            print("[Oanda] ⏸  AUTO_TRADE_ENABLED=false — alert only, no order placed")
             return False
         if not self._within_daily_loss_limit():
+            print(f"[Oanda] 🛑 Daily loss limit hit — no more trades today")
             return False
         if not self._within_trade_limit():
+            print(f"[Oanda] 🛑 {MAX_TRADES}-trade daily limit reached — no more trades today")
             return False
         return True
 
@@ -588,7 +590,7 @@ class OandaClient:
             )
             fire_alert(msg, alert_type="ORDER_PLACED", symbol=symbol)
         except Exception as e:
-            log.error(f"[Oanda] Failed to send execution alert: {e}")
+            print(f"[Oanda] ❌ Failed to send execution alert: {e}")
 
     def _send_cancel_alert(self, symbol: str, direction: str, entry: float,
                            stop: float, tp1: float, risk_usd: float,

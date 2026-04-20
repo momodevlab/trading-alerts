@@ -327,6 +327,51 @@ def _suggest_levels(symbol: str, direction: str, price: float,
 
 
 # ---------------------------------------------------------------------------
+# Auto-execute helper
+# ---------------------------------------------------------------------------
+
+def _auto_execute(symbol: str, direction: str, price: float,
+                  stop: float, tp1: float, score: dict) -> None:
+    """
+    Place an order when an ENTRY alert fires.
+    Forex → Oanda (always, until balance >= $500).
+    Futures → Tradovate (only when balance >= $500).
+    Prints result so Railway logs show what happened.
+    """
+    is_forex   = symbol in FOREX_CONFIG
+    is_futures = symbol in FUTURES_CONFIG
+    mode       = _trading_mode()
+
+    if is_forex:
+        if _oanda.is_safe_to_trade():
+            print(f"  [{symbol}] Placing {direction} order via Oanda — entry {price}")
+            _oanda.place_order(
+                symbol=symbol,
+                direction=direction,
+                entry=price,
+                stop=stop,
+                tp1=tp1,
+                strategy=f"ENTRY_SIGNAL score={score.get('total',0)}",
+                order_type="MARKET",
+            )
+        else:
+            print(f"  [{symbol}] ENTRY signal — Oanda not safe to trade (check Railway logs)")
+
+    elif is_futures and mode == 'futures':
+        if _tradovate.is_safe_to_trade():
+            print(f"  [{symbol}] Placing {direction} order via Tradovate — entry {price}")
+            _tradovate.place_bracket_order(
+                symbol=symbol,
+                direction=direction,
+                qty=1,
+                entry=price,
+                stop=stop,
+                tp1=tp1,
+                strategy=f"ENTRY_SIGNAL score={score.get('total',0)}",
+            )
+
+
+# ---------------------------------------------------------------------------
 # Single symbol check
 # ---------------------------------------------------------------------------
 
@@ -400,6 +445,9 @@ def check_symbol(symbol: str, test_mode: bool = False) -> dict:
         )
         fire_alert(msg, alert_type='ENTRY', symbol=symbol)
         result['alerts_fired'].append('ENTRY')
+
+        # Auto-execute on ENTRY signal
+        _auto_execute(symbol, direction, price, stop, tp1, score)
 
     elif setup_met and not _already_alerted(symbol, 'SETUP', hours=4):
         msg = format_alert_message(
