@@ -815,13 +815,32 @@ def _maybe_heartbeat(results: list) -> None:
 # Main loop
 # ---------------------------------------------------------------------------
 
+FUTURES_UNLOCK_BALANCE = 500.0   # USD — switch from forex-only to futures at this balance
+
+
+def _trading_mode() -> str:
+    """
+    Return 'forex' if Oanda balance < $500, else 'futures'.
+    Falls back to 'forex' if balance can't be fetched.
+    """
+    try:
+        balance = _oanda.get_balance()
+        if balance >= FUTURES_UNLOCK_BALANCE:
+            return 'futures'
+    except Exception:
+        pass
+    return 'forex'
+
+
 def run_loop() -> None:
     print("\n=== Futures + Forex Alert Monitor starting ===")
-    print("  Futures:  Mon–Fri 6 AM – 5 PM ET")
+    print(f"  Forex auto-trade until balance reaches ${FUTURES_UNLOCK_BALANCE:.0f}")
+    print(f"  At ${FUTURES_UNLOCK_BALANCE:.0f}+: switch to futures trading")
     print("  Forex:    24/5 — session-filtered (Asian/London/NY)")
     tv_health_check()
 
     last_tv_check   = time.time()
+    last_mode_log   = ""
     futures_symbols = list(FUTURES_CONFIG.keys())
 
     while True:
@@ -830,10 +849,20 @@ def run_loop() -> None:
             tv_health_check()
             last_tv_check = time.time()
 
+        mode    = _trading_mode()
         results = []
 
-        # --- Futures: only during market hours ---
-        if _is_market_hours():
+        if mode != last_mode_log:
+            ts = _et_time_str()
+            if mode == 'futures':
+                print(f"[{ts} ET] 🎉 Balance >= ${FUTURES_UNLOCK_BALANCE:.0f} — switching to FUTURES mode")
+            else:
+                bal = _oanda.get_balance()
+                print(f"[{ts} ET] FOREX mode — balance ${bal:.2f} (target ${FUTURES_UNLOCK_BALANCE:.0f})")
+            last_mode_log = mode
+
+        # --- Futures: only when balance >= $500 AND during market hours ---
+        if mode == 'futures' and _is_market_hours():
             for sym in futures_symbols:
                 try:
                     r = check_symbol(sym)
@@ -841,7 +870,7 @@ def run_loop() -> None:
                 except Exception as e:
                     print(f"  [{sym}] Error: {e}")
 
-        # --- Forex: 24/5, session-filtered pairs only ---
+        # --- Forex: always 24/5 until balance >= $500, then alerts-only ---
         if _is_forex_market_open():
             active_pairs = _active_forex_pairs()
             for sym in active_pairs:

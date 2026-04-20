@@ -583,7 +583,8 @@ class OandaClient:
                 f"Stop:   {stop:.{dec}f}  ({stop_pips:.1f} pips | ${risk_usd:.2f} risk)\n"
                 f"TP1:    {tp1:.{dec}f}  ({tp1_pips:.1f} pips | R:R {rr}:1)\n\n"
                 f"Size: {abs(units):,} units ({lot_size:.5f} lots)\n"
-                f"Available balance: ${live_balance:.2f} | Risk: {RISK_PCT}% = ${risk_usd:.2f}"
+                f"Balance: ${live_balance:.2f} | Risk: {RISK_PCT}% = ${risk_usd:.2f}\n"
+                f"Daily P&amp;L: ${self._daily_pnl:+.2f}"
             )
             fire_alert(msg, alert_type="ORDER_PLACED", symbol=symbol)
         except Exception as e:
