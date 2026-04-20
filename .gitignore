@@ -8,6 +8,8 @@ data/economic/
 data/sessions/
 data/reports/
 data/alerts_log.json
+data/oanda_open_trades.json
+data/trade_log.json
 
 # Python
 __pycache__/

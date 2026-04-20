@@ -50,8 +50,9 @@ BASE_URL = (
     "https://api-fxtrade.oanda.com"
 )
 
-BASE_DIR  = Path(__file__).parent.parent
-TRADE_LOG = BASE_DIR / "data" / "trade_log.json"
+BASE_DIR       = Path(__file__).parent.parent
+TRADE_LOG      = BASE_DIR / "data" / "trade_log.json"
+OPEN_TRADES_DB = BASE_DIR / "data" / "oanda_open_trades.json"
 TRADE_LOG.parent.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -356,6 +357,35 @@ class OandaClient:
         if success:
             self._trades_today += 1
             log.info(f"[Oanda] Order placed successfully")
+
+            # Extract trade ID from response for exit monitoring
+            trade_id = None
+            if response:
+                fill = response.get("orderFillTransaction", {})
+                trade_id = fill.get("tradeOpened", {}).get("tradeID")
+                if not trade_id:
+                    # Limit order — trade ID assigned when filled; track order ID for now
+                    create = response.get("orderCreateTransaction", {})
+                    trade_id = create.get("id")
+
+            self._save_open_trade({
+                "trade_id":    trade_id,
+                "symbol":      symbol,
+                "instrument":  instrument,
+                "direction":   direction,
+                "units":       units,
+                "entry":       entry,
+                "stop":        stop,
+                "tp1":         tp1,
+                "stop_pips":   round(stop_pips, 1),
+                "tp1_pips":    round(tp1_pips, 1),
+                "risk_usd":    round(risk_usd, 2),
+                "strategy":    strategy,
+                "opened_at":   datetime.now(timezone.utc).isoformat(),
+                "alerted_tp1": False,
+                "alerted_sl":  False,
+            })
+
             self._send_execution_alert(
                 symbol=symbol, direction=direction,
                 units=units, entry=entry, stop=stop, tp1=tp1,
@@ -371,6 +401,142 @@ class OandaClient:
             self._send_failure_alert(symbol, direction, error_msg)
 
         return response
+
+    # ------------------------------------------------------------------
+    # Open trade tracking + exit monitoring
+    # ------------------------------------------------------------------
+
+    def _save_open_trade(self, trade: dict) -> None:
+        """Persist a newly placed trade to the open trades DB."""
+        trades = self._load_open_trades()
+        trades.append(trade)
+        with open(OPEN_TRADES_DB, "w") as f:
+            json.dump(trades, f, indent=2, default=str)
+
+    def _load_open_trades(self) -> list:
+        if not OPEN_TRADES_DB.exists():
+            return []
+        try:
+            with open(OPEN_TRADES_DB) as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _save_all_open_trades(self, trades: list) -> None:
+        with open(OPEN_TRADES_DB, "w") as f:
+            json.dump(trades, f, indent=2, default=str)
+
+    def check_exits(self) -> None:
+        """
+        Poll Oanda for the status of every tracked open trade.
+        Fires Telegram alerts when:
+          - Stop loss is hit  (trade closed at a loss)
+          - TP1 is hit        (trade closed at a profit)
+
+        Call this from the main monitoring loop every 60 seconds.
+        """
+        if not self.account_id or not self.token:
+            return
+
+        tracked = self._load_open_trades()
+        if not tracked:
+            return
+
+        changed = False
+
+        for trade in tracked:
+            if trade.get("closed"):
+                continue
+
+            trade_id = trade.get("trade_id")
+            symbol   = trade.get("symbol", "")
+            dec      = 5 if pip_size(symbol) == 0.0001 else 3
+
+            if not trade_id:
+                continue
+
+            # Fetch current trade state from Oanda
+            data = self._get(f"/v3/accounts/{self.account_id}/trades/{trade_id}")
+            if not data:
+                continue
+
+            t = data.get("trade", {})
+            state       = t.get("state", "")
+            realized_pl = float(t.get("realizedPL", 0))
+            close_price = None
+
+            if t.get("averageClosePrice"):
+                close_price = float(t["averageClosePrice"])
+
+            if state == "CLOSED":
+                trade["closed"] = True
+                changed = True
+
+                entry     = trade.get("entry", 0)
+                stop      = trade.get("stop",  0)
+                tp1       = trade.get("tp1",   0)
+                direction = trade.get("direction", "long")
+                risk_usd  = trade.get("risk_usd", 0)
+                strategy  = trade.get("strategy", "")
+
+                # Update daily P&L
+                self._daily_pnl += realized_pl
+
+                if realized_pl >= 0:
+                    # Closed at profit → TP hit
+                    self._send_tp_alert(
+                        symbol=symbol, direction=direction,
+                        entry=entry, close_price=close_price or tp1,
+                        tp1=tp1, realized_pl=realized_pl,
+                        strategy=strategy, dec=dec,
+                    )
+                else:
+                    # Closed at loss → stop hit
+                    self._send_stop_alert(
+                        symbol=symbol, direction=direction,
+                        entry=entry, close_price=close_price or stop,
+                        stop=stop, realized_pl=realized_pl,
+                        risk_usd=risk_usd, strategy=strategy, dec=dec,
+                    )
+
+        if changed:
+            self._save_all_open_trades(tracked)
+
+    def _send_tp_alert(self, symbol, direction, entry, close_price,
+                       tp1, realized_pl, strategy, dec) -> None:
+        try:
+            from alerts.notifier import fire_alert
+            pips = price_to_pips(symbol, abs(close_price - entry))
+            msg = (
+                f"✅ <b>TP HIT — {symbol}</b>\n"
+                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+                f"Entry:  {entry:.{dec}f}\n"
+                f"Close:  {close_price:.{dec}f}  (+{pips:.1f} pips)\n"
+                f"P&amp;L: <b>+${realized_pl:.2f}</b> 🟢\n\n"
+                f"Daily P&amp;L: ${self._daily_pnl:+.2f}"
+            )
+            fire_alert(msg, alert_type="TP_HIT", symbol=symbol)
+        except Exception as e:
+            log.error(f"[Oanda] Failed to send TP alert: {e}")
+
+    def _send_stop_alert(self, symbol, direction, entry, close_price,
+                         stop, realized_pl, risk_usd, strategy, dec) -> None:
+        try:
+            from alerts.notifier import fire_alert
+            pips = price_to_pips(symbol, abs(close_price - entry))
+            msg = (
+                f"🚨 <b>STOPPED OUT — {symbol}</b>\n"
+                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+                f"Entry:  {entry:.{dec}f}\n"
+                f"Stop:   {stop:.{dec}f}\n"
+                f"Close:  {close_price:.{dec}f}  (-{pips:.1f} pips)\n"
+                f"P&amp;L: <b>${realized_pl:.2f}</b> 🔴\n\n"
+                f"Daily P&amp;L: ${self._daily_pnl:+.2f} "
+                f"(limit: -${ACCOUNT_SIZE * MAX_LOSS_PCT / 100:.2f})"
+            )
+            fire_alert(msg, alert_type="STOP_HIT", symbol=symbol)
+        except Exception as e:
+            log.error(f"[Oanda] Failed to send stop alert: {e}")
 
     def _send_execution_alert(self, symbol, direction, units, entry, stop,
                                tp1, stop_pips, tp1_pips, risk_usd, lot_size,

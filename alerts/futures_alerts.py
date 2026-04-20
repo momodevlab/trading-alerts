@@ -855,11 +855,17 @@ def run_loop() -> None:
             time.sleep(60)
             continue
 
-        # Check exit conditions for registered positions
+        # Check exit conditions for manually registered positions
         try:
             _check_exit_conditions()
         except Exception as e:
             print(f"  [exit monitor] Error: {e}")
+
+        # Check exit conditions for automated Oanda trades (stop/TP hit)
+        try:
+            _oanda.check_exits()
+        except Exception as e:
+            print(f"  [oanda exit monitor] Error: {e}")
 
         _maybe_heartbeat(results)
         time.sleep(60)
