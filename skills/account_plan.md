@@ -114,9 +114,9 @@ The edge compounds. Protect the account first.
 ```
 
 ## Rules
-- Never suggest placing an order
 - Always show the forex micro lot option for accounts under $500
 - Dollar amounts always use the provided ACCOUNT_SIZE (or $250 default)
 - Point values and margin numbers come from FUTURES_CONFIG and CLAUDE.md
 - Growth projections use backtest win rates from the actual system backtest
-- Always show the daily loss limit and emphasize stopping if hit
+- Always show the daily loss limit and note the system halts automatically if hit
+- Note: at $500 the system automatically switches from forex to futures execution

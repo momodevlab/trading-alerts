@@ -147,8 +147,8 @@ simultaneously and fires the appropriate alert based on conditions.
 ```
 
 ## Rules
-- Never suggest placing an order
 - Always show dollar risk per contract when displaying levels
 - Reference FUTURES_CONFIG point values for all dollar calculations
 - Strategy win rates are from Feb–Apr 2025 backtest — a bear market period
   In trending markets, expect VWAP/EMA Pullback to improve to 45–55%
+- The system executes these strategies automatically — display is for reference only

@@ -1,29 +1,56 @@
 # Trading System — Project Context
 
 ## Who I am
-I am an active trader who trades futures micros and minis (MES, MNQ, MCL, MGC,
-MYM, MSI, MNG, M2K) manually. I currently have a small account (a few hundred
-dollars) and am NOT automating any trades. The system is purely for research,
-analysis, and trade alerts. I execute all trades myself in my own platform.
+I am an active trader growing a small forex account (a few hundred dollars)
+toward $500, at which point the system switches to micro futures. I trade
+MES, MNQ, MCL, MGC, MYM, MSI, MNG, M2K and 17 forex pairs.
 
 ## What we are building
-A local research and alert system with three layers:
+A fully automated alert + execution system with three layers:
 
 1. **Live dashboard** — browser-based HTML that auto-refreshes with prices,
    S/R levels, COT data, sentiment, economic heat maps, and an intraday
-   entry/exit planner I use as a reference before taking a trade manually
+   entry/exit planner
 2. **Research engine** — multi-agent analysis on any ticker or futures contract
    via slash commands, outputs structured reports with entry/exit/sizing
-3. **Futures alert system** — monitors MES, MNQ, MCL, MGC, MYM, MSI, MNG, M2K
-   and fires Telegram + terminal alerts when entry/exit conditions are met.
-   I place all trades manually in my own platform after receiving an alert.
+3. **Alert + execution system** — monitors all symbols 24/5, fires Telegram
+   alerts, and automatically places trades via Oanda (forex) and Tradovate
+   (futures) when conditions are met
+
+## Auto-execution behavior
+
+### Phase 1 — Forex (current, until Oanda balance ≥ $500)
+- Monitors 17 forex pairs 24/5, session-filtered (Asian/London/NY)
+- When a strategy signal fires, the system automatically places the trade
+  via the Oanda v20 REST API
+- Lot size = 2% of live available balance, fetched fresh from Oanda before
+  every order (scales up automatically as the account grows)
+- Telegram fires immediately when the order is placed, including:
+  - Entry, stop, TP1, pip distances, R:R
+  - Lot size in units and lots
+  - Current account balance and daily P&L
+- Telegram fires again when stop or TP is hit with final P&L
+- Safety limits: max 3 trades/day, max 6% daily loss — system halts if hit
+
+### Phase 2 — Futures (when Oanda balance ≥ $500)
+- System detects the balance crossing $500 automatically and switches modes
+- Starts auto-executing MES/MNQ/etc via Tradovate during market hours
+- Forex continues to alert but auto-execution stops for forex pairs
+
+### Broker controls (.env)
+```
+AUTO_TRADE_ENABLED=true   # master switch — false = alerts only, no orders
+OANDA_PAPER=true          # true = practice account, false = live
+RISK_PCT=2                # risk per trade as % of available balance
+MAX_TRADES_PER_DAY=3      # hard daily trade limit
+MAX_DAILY_LOSS_PCT=6      # halt trading if daily loss exceeds this %
+```
 
 ## What this system does NOT do
-- No broker API connections
-- No automated order placement of any kind
-- No account balance tracking
-- No position sizing calculations tied to a live account
-- This is a pure information and alerting tool
+- Does not suggest position sizing to me — it calculates it automatically
+- Does not ask about account size — it reads live balance from Oanda
+- Does not place futures trades until Oanda balance reaches $500
+- Does not override safety limits (daily loss, trade count)
 
 ## Project structure
 ```
@@ -49,16 +76,24 @@ trading-system/
 │   ├── sentiment_agent.py       ← AAII, put/call ratio, retail sentiment
 │   └── news_agent.py            ← AI news feed per asset via web search
 ├── alerts/
-│   ├── futures_alerts.py        ← monitors futures, fires alerts
-│   ├── alert_engine.py          ← evaluates conditions, formats messages
-│   └── notifier.py              ← sends Telegram + prints to terminal
+│   ├── futures_alerts.py        ← main loop: monitors all symbols, places orders
+│   ├── alert_engine.py          ← scoring, indicators, S/R levels, candle patterns
+│   ├── strategy_engine.py       ← Gap Fill, VWAP Pullback, ORB, EMA Pullback
+│   └── notifier.py              ← Telegram + terminal alerts + alerts_log.json
+├── brokers/
+│   ├── oanda_client.py          ← Oanda v20 REST: order placement, lot sizing,
+│   │                               exit monitoring, execution Telegram alerts
+│   └── tradovate_client.py      ← Tradovate: futures orders (activates at $500)
 ├── skills/
-│   ├── trade_analyze.md         ← /trade-analyze slash command
-│   ├── trade_quick.md           ← /trade-quick slash command
-│   ├── morning_brief.md         ← /morning-brief slash command
-│   ├── sr_levels.md             ← /sr-levels slash command
-│   ├── futures_scan.md          ← /futures-scan slash command
-│   └── register_position.md    ← /register-position slash command
+│   ├── trade_analyze.md         ← /trade-analyze
+│   ├── morning_brief.md         ← /morning-brief
+│   ├── sr_levels.md             ← /sr-levels
+│   ├── futures_scan.md          ← /futures-scan
+│   ├── register_position.md     ← /register-position
+│   ├── strategies.md            ← /strategies
+│   ├── rr_calculator.md         ← /rr-calculator
+│   ├── account_plan.md          ← /account-plan
+│   └── stock_scan.md            ← /stock-scan
 └── scripts/
     ├── refresh_dashboard.py     ← runs every 5 min during market hours
     ├── morning_setup.py         ← runs at 8:30 ET daily
@@ -77,6 +112,21 @@ TELEGRAM_CHAT_ID=
 
 # TradingView MCP (required — TradingView Desktop must be running)
 TRADINGVIEW_MCP_PORT=9222
+
+# Oanda — forex auto-execution
+OANDA_ACCOUNT_ID=          # e.g. 101-001-12345678-001
+OANDA_API_TOKEN=           # personal access token from oanda.com → API Access
+OANDA_PAPER=true           # true = practice account, false = live
+AUTO_TRADE_ENABLED=true    # master switch for all order placement
+RISK_PCT=2                 # % of available balance to risk per trade
+MAX_TRADES_PER_DAY=3       # max trades per day across all symbols
+MAX_DAILY_LOSS_PCT=6       # halt if daily loss exceeds this %
+
+# Tradovate — futures auto-execution (activates when Oanda balance >= $500)
+TRADOVATE_USERNAME=
+TRADOVATE_PASSWORD=
+TRADOVATE_APP_ID=
+TRADOVATE_PAPER=true
 ```
 
 ## My instruments
@@ -377,10 +427,10 @@ Sections:
 | Command | What it does |
 |---------|-------------|
 | `/trade-analyze MES` | Full 5-agent analysis, saves report to data/reports/ |
-| `/trade-quick MGC` | 60-second snapshot with score and key levels |
 | `/morning-brief` | Watchlist scan, top setups, key events, saves brief |
 | `/sr-levels MNQ 15m` | Key S/R levels for symbol + timeframe, draws on TV chart |
 | `/futures-scan` | Scan all 8 micros, rank by score and setup quality |
+| `/stock-scan` | Scan stock watchlist, rank by score and setup quality |
 | `/register-position MES long 5615 stop=5578 tp1=5670 tp2=5720` | Register open position for exit monitoring |
 | `/strategies` | Full strategy reference — Gap Fill, VWAP Pullback, ORB, EMA Pullback with conditions, levels, and backtest results |
 | `/rr-calculator MES 5200 5192 250` | Calculate exact R:R, TP1/TP2, and position sizing for any trade |
@@ -399,7 +449,7 @@ Sections:
 
 ## Trading rules Claude must follow
 
-1. Never suggest placing an order — information and alerts only
+1. The system places orders automatically — do not ask me to place them manually
 2. Always show stop loss and at least one take profit with every setup
 3. Minimum 1.5:1 R:R — do not alert on setups below this
 4. No alerts within 15 minutes of market close
@@ -407,8 +457,10 @@ Sections:
 6. If COT and technicals conflict: alert but flag the conflict explicitly
 7. Do not repeat the same alert within 4 hours
 8. Dollar risk per alert must use the correct point_value per instrument
-9. Never ask about account size or suggest position sizing based on capital —
-   I determine my own position size
+9. Never ask about account size — the system reads live balance from Oanda
+10. Lot size is always calculated from live available balance at 2% risk —
+    never hardcode a lot size or ask me to confirm sizing
+11. Always include current balance and daily P&L in execution alerts
 
 ## Stock and options alerts
 
