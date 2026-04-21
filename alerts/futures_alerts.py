@@ -435,32 +435,9 @@ def check_symbol(symbol: str, test_mode: bool = False) -> dict:
         print(f"  [{symbol}] Near close — suppressing alerts")
         return result
 
-    # --- Score-based alerts (existing system) ---
-    entry_zone, stop, tp1, tp2 = _suggest_levels(symbol, direction, price, levels, indicators)
-    reasons  = _build_reasons(score, indicators, pattern)
-    warnings = _build_warnings(score, indicators, symbol)
-
-    if entry_met and not _already_alerted(symbol, 'ENTRY', hours=4):
-        msg = format_alert_message(
-            alert_type='ENTRY', symbol=symbol, direction=direction,
-            price=price, score=score,
-            entry_zone=entry_zone, stop=stop, tp1=tp1, tp2=tp2,
-            levels=levels, pattern=pattern, reasons=reasons, warnings=warnings,
-        )
-        fire_alert(msg, alert_type='ENTRY', symbol=symbol)
-        result['alerts_fired'].append('ENTRY')
-
-    elif setup_met and not _already_alerted(symbol, 'SETUP', hours=4):
-        msg = format_alert_message(
-            alert_type='SETUP', symbol=symbol, direction=direction,
-            price=price, score=score,
-            entry_zone=entry_zone, stop=stop, tp1=tp1, tp2=tp2,
-            levels=levels, pattern=pattern, reasons=reasons, warnings=warnings,
-        )
-        fire_alert(msg, alert_type='SETUP', symbol=symbol)
-        result['alerts_fired'].append('SETUP')
-
-    # --- Strategy alerts (VWAP Pullback / ORB / EMA Pullback) ---
+    # --- Strategy execution only — no alert-only messages ---
+    # Telegram fires from oanda_client.py when the order is actually placed.
+    # Score-based SETUP/ENTRY alerts removed — they were firing without trades.
     _check_strategy_signal(symbol, levels, result)
 
     return result
@@ -491,13 +468,8 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
         if gf_sig is not None:
             cooldown_key = 'STRATEGY_GAP_FILL'
             if not _already_alerted(symbol, cooldown_key, hours=20):
-                msg = format_gap_fill_alert(gf_sig)
-                fire_alert(msg, alert_type=cooldown_key, symbol=symbol)
-                result['alerts_fired'].append(cooldown_key)
                 print(f"  [{symbol}] GAP FILL — {gf_sig.direction} entry {gf_sig.entry:.2f} "
-                      f"→ PDC {gf_sig.tp1:.2f}")
-
-                # Auto-execute futures orders via Tradovate (dormant until $500 funded)
+                      f"→ PDC {gf_sig.tp1:.2f} → attempting execution")
                 if _tradovate.is_safe_to_trade():
                     _tradovate.place_bracket_order(
                         symbol=gf_sig.symbol,
@@ -508,6 +480,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                         tp1=gf_sig.tp1,
                         strategy=gf_sig.strategy,
                     )
+                    result['alerts_fired'].append(cooldown_key)
             return   # gap fill takes priority — don't also fire VWAP/ORB at open
 
     # ── VWAP Pullback / ORB (futures) or forex strategy (routed by pair) ───
@@ -523,25 +496,14 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
     if sig is None:
         return
 
-    # Score gate: only execute when conviction is high (±7+), alert-only below that
-    current_score = abs(result.get('score', {}).get('total', 0))
-    score_ok = current_score >= 7
-
     cooldown_type = f'STRATEGY_{sig.strategy}'
     if _already_alerted(symbol, cooldown_type, hours=4):
         return
 
-    msg = format_strategy_entry_alert(sig, levels=levels)
-    fire_alert(msg, alert_type=cooldown_type, symbol=symbol)
-    result['alerts_fired'].append(cooldown_type)
-    print(f"  [{symbol}] Strategy signal: {sig.strategy} score={current_score} {'→ EXECUTING' if score_ok else '→ alert only (score<7)'}")
+    print(f"  [{symbol}] Strategy signal: {sig.strategy} → attempting execution")
 
-    if not score_ok:
-        return
-
-    # Auto-execute via broker (only if AUTO_TRADE_ENABLED=true and credentials set)
+    # Execute — Telegram fires inside place_order/place_bracket_order on fill
     if is_futures:
-        # Tradovate — futures ($500+ account, dormant until you tell me to activate)
         if _tradovate.is_safe_to_trade():
             _tradovate.place_bracket_order(
                 symbol=sig.symbol,
@@ -552,8 +514,8 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 tp1=sig.tp1,
                 strategy=sig.strategy,
             )
+            result['alerts_fired'].append(cooldown_type)
     else:
-        # Oanda — forex ($100+ account)
         if _oanda.is_safe_to_trade():
             _oanda.place_order(
                 symbol=sig.symbol,
@@ -564,6 +526,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 strategy=sig.strategy,
                 order_type="MARKET",
             )
+            result['alerts_fired'].append(cooldown_type)
 
 
 # ---------------------------------------------------------------------------
