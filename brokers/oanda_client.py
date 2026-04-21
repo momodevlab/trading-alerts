@@ -343,12 +343,8 @@ class OandaClient:
             },
         }
 
-        if order_type == "MARKET":
-            order_body["type"] = "MARKET"
-        else:
-            order_body["type"]          = "LIMIT"
-            order_body["price"]         = f"{entry:.{decimals}f}"
-            order_body["timeInForce"]   = "GTC"
+        # Always use MARKET orders — fills immediately, counter only increments on fill
+        order_body["type"] = "MARKET"
 
         mode_tag = "[PRACTICE]" if self.paper else "[LIVE]"
         abs_units = abs(units)
@@ -366,13 +362,13 @@ class OandaClient:
             {"order": order_body}
         )
 
-        # Determine success — Oanda returns orderCreateTransaction on success
-        success = bool(
-            response and (
-                "orderCreateTransaction" in response or
-                "orderFillTransaction"   in response
-            )
-        )
+        # Only count as success when Oanda actually fills the order
+        # orderCreateTransaction = limit order accepted (may never fill) — don't count
+        # orderFillTransaction   = market order filled immediately — count this
+        filled = bool(response and "orderFillTransaction" in response)
+        success = filled
+        if response and not filled:
+            print(f"[Oanda] Order not filled — response keys: {list(response.keys())}")
 
         self._log_trade({
             "timestamp":       datetime.now(timezone.utc).isoformat(),

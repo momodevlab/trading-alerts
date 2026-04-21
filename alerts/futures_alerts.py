@@ -550,7 +550,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 stop=sig.stop,
                 tp1=sig.tp1,
                 strategy=sig.strategy,
-                order_type="LIMIT",
+                order_type="MARKET",
             )
 
 
