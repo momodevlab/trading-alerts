@@ -280,9 +280,6 @@ class OandaClient:
         if not self._within_daily_loss_limit():
             print(f"[Oanda] 🛑 Daily loss limit hit — no more trades today")
             return False
-        if not self._within_trade_limit():
-            print(f"[Oanda] 🛑 {MAX_TRADES}-trade daily limit reached — no more trades today")
-            return False
         return True
 
     # ------------------------------------------------------------------
@@ -392,8 +389,7 @@ class OandaClient:
         })
 
         if success:
-            self._trades_today += 1
-            log.info(f"[Oanda] Order placed successfully")
+            print(f"[Oanda] ✅ Order filled: {symbol} {direction} {abs(units)} units")
 
             # Extract trade ID from response for exit monitoring
             trade_id = None
