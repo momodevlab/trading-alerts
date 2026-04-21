@@ -44,6 +44,8 @@ from alerts.alert_engine import (
 )
 from alerts.strategy_engine import (
     FuturesStrategy, ForexStrategy, GapFillStrategy,
+    AlligatorRSIStrategy, RSIStrategy,
+    ALLIGATOR_PAIRS, RSI_PAIRS,
     format_strategy_entry_alert,
     format_gap_fill_alert,
     format_tp1_hit_alert,
@@ -58,9 +60,11 @@ from brokers.oanda_client import get_client as get_oanda_client
 from brokers.tradovate_client import get_client as get_tradovate_client
 
 # Strategy instances (shared across loop iterations)
-_futures_strategy  = FuturesStrategy()
-_forex_strategy    = ForexStrategy()
-_gap_fill_strategy = GapFillStrategy()
+_futures_strategy   = FuturesStrategy()
+_forex_strategy     = ForexStrategy()
+_alligator_strategy = AlligatorRSIStrategy()
+_rsi_strategy       = RSIStrategy()
+_gap_fill_strategy  = GapFillStrategy()
 
 # Broker clients
 _oanda    = get_oanda_client()
@@ -506,11 +510,15 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                     )
             return   # gap fill takes priority — don't also fire VWAP/ORB at open
 
-    # ── VWAP Pullback / ORB (futures) or EMA Pullback (forex) ─────────────
+    # ── VWAP Pullback / ORB (futures) or forex strategy (routed by pair) ───
     if is_futures:
         sig = _futures_strategy.check(symbol, bars)
+    elif symbol in ALLIGATOR_PAIRS:
+        sig = _alligator_strategy.check(symbol, bars)
+    elif symbol in RSI_PAIRS:
+        sig = _rsi_strategy.check(symbol, bars)
     else:
-        sig = _forex_strategy.check(symbol, bars)
+        sig = _forex_strategy.check(symbol, bars)  # fallback: EMA Pullback
 
     if sig is None:
         return
