@@ -33,6 +33,25 @@ load_dotenv()
 
 log = logging.getLogger(__name__)
 
+TG_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TG_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+
+
+def _tg(message: str) -> None:
+    """Send a Telegram message directly via HTTP — no asyncio, no library."""
+    print(message)   # always echo to Railway logs
+    if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
+            data={"chat_id": TG_CHAT_ID, "text": message,
+                  "parse_mode": "HTML", "disable_web_page_preview": "true"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[Oanda] Telegram send failed: {e}")
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -532,96 +551,69 @@ class OandaClient:
 
     def _send_tp_alert(self, symbol, direction, entry, close_price,
                        tp1, realized_pl, strategy, dec) -> None:
-        try:
-            from alerts.notifier import fire_alert
-            pips = price_to_pips(symbol, abs(close_price - entry))
-            msg = (
-                f"✅ <b>TP HIT — {symbol}</b>\n"
-                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
-                f"Entry:  {entry:.{dec}f}\n"
-                f"Close:  {close_price:.{dec}f}  (+{pips:.1f} pips)\n"
-                f"P&amp;L: <b>+${realized_pl:.2f}</b> 🟢\n\n"
-                f"Daily P&amp;L: ${self._daily_pnl:+.2f}"
-            )
-            fire_alert(msg, alert_type="TP_HIT", symbol=symbol)
-        except Exception as e:
-            log.error(f"[Oanda] Failed to send TP alert: {e}")
+        pips = price_to_pips(symbol, abs(close_price - entry))
+        balance = self.get_balance()
+        _tg(
+            f"✅ <b>TP HIT — {symbol}</b>\n"
+            f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+            f"Entry:  {entry:.{dec}f}\n"
+            f"Close:  {close_price:.{dec}f}  (+{pips:.1f} pips)\n"
+            f"P&amp;L: <b>+${realized_pl:.2f}</b> 🟢\n\n"
+            f"Daily P&amp;L: ${self._daily_pnl:+.2f}\n"
+            f"Balance: ${balance:.2f}"
+        )
 
     def _send_stop_alert(self, symbol, direction, entry, close_price,
                          stop, realized_pl, risk_usd, strategy, dec) -> None:
-        try:
-            from alerts.notifier import fire_alert
-            pips = price_to_pips(symbol, abs(close_price - entry))
-            msg = (
-                f"🚨 <b>STOPPED OUT — {symbol}</b>\n"
-                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
-                f"Entry:  {entry:.{dec}f}\n"
-                f"Stop:   {stop:.{dec}f}\n"
-                f"Close:  {close_price:.{dec}f}  (-{pips:.1f} pips)\n"
-                f"P&amp;L: <b>${realized_pl:.2f}</b> 🔴\n\n"
-                f"Daily P&amp;L: ${self._daily_pnl:+.2f} "
-                f"(limit: -${ACCOUNT_SIZE * MAX_LOSS_PCT / 100:.2f})"
-            )
-            fire_alert(msg, alert_type="STOP_HIT", symbol=symbol)
-        except Exception as e:
-            log.error(f"[Oanda] Failed to send stop alert: {e}")
+        pips = price_to_pips(symbol, abs(close_price - entry))
+        balance = self.get_balance()
+        _tg(
+            f"🚨 <b>STOPPED OUT — {symbol}</b>\n"
+            f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+            f"Entry:  {entry:.{dec}f}\n"
+            f"Stop:   {stop:.{dec}f}\n"
+            f"Close:  {close_price:.{dec}f}  (-{pips:.1f} pips)\n"
+            f"P&amp;L: <b>${realized_pl:.2f}</b> 🔴\n\n"
+            f"Daily P&amp;L: ${self._daily_pnl:+.2f}\n"
+            f"Balance: ${balance:.2f}"
+        )
 
     def _send_execution_alert(self, symbol, direction, units, entry, stop,
                                tp1, stop_pips, tp1_pips, risk_usd, lot_size,
                                order_type, strategy, live_balance=0.0) -> None:
-        """Send Telegram confirmation when an order is successfully placed."""
-        try:
-            from alerts.notifier import fire_alert
-            dec   = 5 if pip_size(symbol) == 0.0001 else 3
-            arrow = "📈" if direction == "long" else "📉"
-            rr    = round(tp1_pips / stop_pips, 1) if stop_pips else 0
-            mode  = "LIVE" if not self.paper else "PRACTICE"
-
-            msg = (
-                f"{arrow} <b>ORDER PLACED [{mode}] — {symbol}</b>\n"
-                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n"
-                f"Type: {order_type}\n\n"
-                f"Entry:  {entry:.{dec}f}\n"
-                f"Stop:   {stop:.{dec}f}  ({stop_pips:.1f} pips | ${risk_usd:.2f} risk)\n"
-                f"TP1:    {tp1:.{dec}f}  ({tp1_pips:.1f} pips | R:R {rr}:1)\n\n"
-                f"Size: {abs(units):,} units ({lot_size:.5f} lots)\n"
-                f"Balance: ${live_balance:.2f} | Risk: {RISK_PCT}% = ${risk_usd:.2f}\n"
-                f"Daily P&amp;L: ${self._daily_pnl:+.2f}"
-            )
-            fire_alert(msg, alert_type="ORDER_PLACED", symbol=symbol)
-        except Exception as e:
-            print(f"[Oanda] ❌ Failed to send execution alert: {e}")
+        dec   = 5 if pip_size(symbol) == 0.0001 else 3
+        arrow = "📈" if direction == "long" else "📉"
+        rr    = round(tp1_pips / stop_pips, 1) if stop_pips else 0
+        mode  = "LIVE" if not self.paper else "PRACTICE"
+        _tg(
+            f"{arrow} <b>ORDER PLACED [{mode}] — {symbol}</b>\n"
+            f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+            f"Entry:  {entry:.{dec}f}\n"
+            f"Stop:   {stop:.{dec}f}  ({stop_pips:.1f} pips | ${risk_usd:.2f} risk)\n"
+            f"TP1:    {tp1:.{dec}f}  ({tp1_pips:.1f} pips | R:R {rr}:1)\n\n"
+            f"Size: {abs(units):,} units ({lot_size:.5f} lots)\n"
+            f"Balance: ${live_balance:.2f} | Risk: {RISK_PCT}% = ${risk_usd:.2f}\n"
+            f"Daily P&amp;L: ${self._daily_pnl:+.2f}"
+        )
 
     def _send_cancel_alert(self, symbol: str, direction: str, entry: float,
                            stop: float, tp1: float, risk_usd: float,
                            reason: str, strategy: str) -> None:
-        """Send Telegram alert when Oanda cancels or rejects an order."""
-        try:
-            from alerts.notifier import fire_alert
-            dec = 5 if pip_size(symbol) == 0.0001 else 3
-
-            # Make the reason human-readable
-            reason_map = {
-                "INSUFFICIENT_MARGIN": "Insufficient margin — available balance too low for this lot size",
-                "MARKET_HALTED":       "Market halted — trading paused on this pair",
-                "CLOSING_MARKET":      "Market closing — order rejected near session end",
-                "ACCOUNT_NOT_TRADEABLE_ON_FILL": "Account not tradeable",
-            }
-            friendly = reason_map.get(reason, reason)
-
-            live_balance = self._get_available_balance()
-
-            msg = (
-                f"⚠️ <b>ORDER CANCELLED — {symbol}</b>\n"
-                f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
-                f"Entry: {entry:.{dec}f} | Stop: {stop:.{dec}f} | TP: {tp1:.{dec}f}\n\n"
-                f"Reason: {friendly}\n"
-                f"Available balance: ${live_balance:.2f} | Attempted risk: ${risk_usd:.2f}\n\n"
-                f"No position opened — manual entry needed if you want this trade."
-            )
-            fire_alert(msg, alert_type="ORDER_CANCELLED", symbol=symbol)
-        except Exception as e:
-            log.error(f"[Oanda] Failed to send cancel alert: {e}")
+        dec = 5 if pip_size(symbol) == 0.0001 else 3
+        reason_map = {
+            "INSUFFICIENT_MARGIN": "Insufficient margin — balance too low for this lot size",
+            "MARKET_HALTED":       "Market halted — trading paused on this pair",
+            "CLOSING_MARKET":      "Market closing — order rejected near session end",
+            "ACCOUNT_NOT_TRADEABLE_ON_FILL": "Account not tradeable",
+        }
+        live_balance = self._get_available_balance()
+        _tg(
+            f"⚠️ <b>ORDER CANCELLED — {symbol}</b>\n"
+            f"Direction: {direction.capitalize()} | Strategy: {strategy}\n\n"
+            f"Entry: {entry:.{dec}f} | Stop: {stop:.{dec}f} | TP: {tp1:.{dec}f}\n\n"
+            f"Reason: {reason_map.get(reason, reason)}\n"
+            f"Balance: ${live_balance:.2f} | Attempted risk: ${risk_usd:.2f}"
+        )
 
     def close_all_trades(self) -> None:
         """Close all open trades — use in emergencies."""
