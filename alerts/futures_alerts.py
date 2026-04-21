@@ -43,7 +43,7 @@ from alerts.alert_engine import (
     _yf_symbol,
 )
 from alerts.strategy_engine import (
-    FuturesStrategy, ForexStrategy, GapFillStrategy,
+    FuturesStrategy, GapFillStrategy,
     AlligatorRSIStrategy, RSIStrategy,
     ALLIGATOR_PAIRS, RSI_PAIRS,
     format_strategy_entry_alert,
@@ -61,7 +61,6 @@ from brokers.tradovate_client import get_client as get_tradovate_client
 
 # Strategy instances (shared across loop iterations)
 _futures_strategy   = FuturesStrategy()
-_forex_strategy     = ForexStrategy()
 _alligator_strategy = AlligatorRSIStrategy()
 _rsi_strategy       = RSIStrategy()
 _gap_fill_strategy  = GapFillStrategy()
@@ -452,15 +451,20 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
       2. ORB        — 9:45–10:15 AM ET only
       3. VWAP Pullback — any time during RTH
 
-    Forex: EMA 9/21 Pullback only (session-filtered upstream).
+    Forex: explicit pair routing to AlligatorRSI or RSI only.
 
     Cooldown: 4 hours per symbol per strategy type.
     """
-    bars = _get_bars_15m(symbol)
+    is_futures = symbol in FUTURES_CONFIG
+
+    # Fetch bars at the correct timeframe for each strategy type
+    if is_futures:
+        bars = _get_bars_15m(symbol)       # futures: 15m
+    else:
+        bars = _get_bars(symbol, '1h', '30d')  # forex: 1h (backtested timeframe)
+
     if bars is None or len(bars) < 20:
         return
-
-    is_futures = symbol in FUTURES_CONFIG
 
     # ── Gap Fill (futures only, 9:30–9:44 AM ET) ──────────────────────────
     if is_futures:
@@ -483,7 +487,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                     result['alerts_fired'].append(cooldown_key)
             return   # gap fill takes priority — don't also fire VWAP/ORB at open
 
-    # ── VWAP Pullback / ORB (futures) or forex strategy (routed by pair) ───
+    # ── VWAP Pullback / ORB (futures) or forex strategy (explicitly assigned) ──
     if is_futures:
         sig = _futures_strategy.check(symbol, bars)
     elif symbol in ALLIGATOR_PAIRS:
@@ -491,7 +495,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
     elif symbol in RSI_PAIRS:
         sig = _rsi_strategy.check(symbol, bars)
     else:
-        sig = _forex_strategy.check(symbol, bars)  # fallback: EMA Pullback
+        return
 
     if sig is None:
         return
