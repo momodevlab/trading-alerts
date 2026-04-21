@@ -16,8 +16,11 @@ FUTURES  (MES, MNQ, MYM, M2K, MCL, MGC, MSI, MNG)
   2. VWAP Pullback     — RTH session, any time
   3. ORB               — 9:45–10:15 AM ET only
 
-FOREX  (17 pairs, 24/5 session-filtered)
-  1. EMA 9/21 Pullback — Asian / London / NY session filtered
+FOREX  (12 pairs, 1h bars, auto-executed via Oanda)
+  Group A — Williams Alligator + RSI:
+    AUDCAD, USDCAD, CADJPY, EURUSD, AUDUSD, GBPJPY
+  Group B — RSI Crossover:
+    GBPUSD, USDJPY, USDCHF, EURJPY, NZDJPY, NZDUSD
 
 ═══════════════════════════════════════════════════════════════
 STRATEGY 1 — GAP FILL  (Primary morning signal)
@@ -101,35 +104,66 @@ Levels:
   Trail:  1.5×ATR trailing stop for final 20%
 
 ═══════════════════════════════════════════════════════════════
-STRATEGY 4 — EMA 9/21 PULLBACK  (Forex intraday trend)
+STRATEGY 4 — WILLIAMS ALLIGATOR + RSI  (Forex Group A, 1h)
 ═══════════════════════════════════════════════════════════════
 
-Best in:   Trending sessions for the specific currency pair
-Session filter:
-  Asian  (7 PM–4 AM ET):  JPY, AUD, NZD pairs
-  London (3 AM–12 PM ET): EUR, GBP pairs
-  NY     (8 AM–5 PM ET):  all 17 pairs
+Pairs:     AUDCAD, USDCAD, CADJPY, EURUSD, AUDUSD, GBPJPY
+Timeframe: 1h bars (15m tested and rejected — WR dropped 10–33%)
 
-Conditions (ALL required):
-  1. Price above EMA 50 (uptrend)
-  2. EMA 9 > EMA 21 (momentum intact)
-  3. ADX >= 20 (trending market)
-  4. Pullback bar touched EMA 9/21 zone ±0.20%
-  5. RSI 35–65
-  6. MACD positive OR rising (curr > prev)
-  7. Bullish candle at zone (no volume filter — forex volume unreliable)
-  8. Trigger bar is bullish (close > open)
+Alligator lines (SMMA approximation):
+  Jaw   = SMMA(13) — slowest
+  Teeth = SMMA(8)
+  Lips  = SMMA(5)  — fastest
+
+Long entry (ALL required):
+  1. Lips > Teeth > Jaw  (alligator eating upward)
+  2. RSI crosses above 50 on this bar (prev ≤ 50, curr > 50)
+  3. RSI < 65  (not yet overbought)
+
+Short entry (ALL required):
+  1. Lips < Teeth < Jaw  (alligator eating downward)
+  2. RSI crosses below 50 on this bar (prev ≥ 50, curr < 50)
+  3. RSI > 35  (not yet oversold)
 
 Levels:
-  Entry:  1 pip above trigger bar high
-  Stop:   Lower of: pullback bar low − 2 pips OR entry − 1.2×ATR
-  TP1:    Entry + 1.5R  — exit 40%
+  Entry:  1 pip above/below current price on signal bar
+  Stop:   3-bar swing low/high OR entry − 1.2×ATR (whichever is wider)
+  TP1:    Entry + 1.5R  — exit 40%, stop → breakeven
   TP2:    Entry + 2.5R  — exit 40%
   Trail:  1.5×ATR trailing stop for final 20%
 
-Backtest results (Feb–Apr 2025):
-  EURUSD:  39.2% WR  |  PF 1.12  ← profitable even in bear market
-  AUDUSD:  32.7% WR  |  PF 0.79
+Backtest results (90 days, 1h bars):
+  AUDCAD: 61.1% WR  |  18 trades  ← best
+  USDCAD: 53.3% WR  |  30 trades
+  CADJPY: 50.0% WR  |  28 trades
+  EURUSD: 48.1% WR  |  27 trades
+  AUDUSD: 44.8% WR  |  29 trades
+  GBPJPY: 42.9% WR  |  21 trades
+
+═══════════════════════════════════════════════════════════════
+STRATEGY 5 — RSI CROSSOVER  (Forex Group B, 1h)
+═══════════════════════════════════════════════════════════════
+
+Pairs:     GBPUSD, USDJPY, USDCHF, EURJPY, NZDJPY, NZDUSD
+Timeframe: 1h bars
+
+Long entry:  RSI crosses above 40 (oversold recovery)
+Short entry: RSI crosses below 60 (overbought fade)
+
+Exit rules:
+  Stop:   3-bar swing low/high OR entry − 1.2×ATR
+  TP1:    Entry + 1.5R  — exit 40%
+  TP2:    Entry + 2.5R  — exit 40%
+  Trail:  1.5×ATR trailing stop for final 20%
+  Also exit: RSI hits 70 (long) or 30 (short) — momentum exhausted
+
+Backtest results (90 days, 1h bars):
+  EURJPY: 68.3% WR  |  PF 1.21  |  41 trades
+  USDJPY: 66.7% WR  |  PF 1.51  |  48 trades  ← best PF
+  USDCHF: 66.7% WR  |  PF 1.35  |  54 trades
+  GBPUSD: 63.0% WR  |  PF 1.28  |  54 trades
+  NZDJPY: 52.8% WR  |  PF 0.93  |  53 trades
+  NZDUSD: 51.9% WR  |  PF 0.97  |  54 trades
 
 ═══════════════════════════════════════════════════════════════
 REGIME GUIDE — WHICH STRATEGY TO USE TODAY
@@ -149,6 +183,7 @@ simultaneously and fires the appropriate alert based on conditions.
 ## Rules
 - Always show dollar risk per contract when displaying levels
 - Reference FUTURES_CONFIG point values for all dollar calculations
-- Strategy win rates are from Feb–Apr 2025 backtest — a bear market period
-  In trending markets, expect VWAP/EMA Pullback to improve to 45–55%
+- Futures strategy win rates are from Feb–Apr 2025 backtest — a bear market period
+- Forex strategy win rates are from 90-day backtest (1h bars)
+- 15m was tested for forex and rejected — Alligator WR dropped 10–33%, keep 1h
 - The system executes these strategies automatically — display is for reference only

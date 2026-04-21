@@ -20,7 +20,7 @@ A fully automated alert + execution system with three layers:
 ## Auto-execution behavior
 
 ### Phase 1 — Forex (current, until Oanda balance ≥ $500)
-- Monitors 17 forex pairs 24/5, session-filtered (Asian/London/NY)
+- Monitors 12 forex pairs 24/5 on 1h bars
 - When a strategy signal fires, the system automatically places the trade
   via the Oanda v20 REST API
 - Lot size = 2% of live available balance, fetched fresh from Oanda before
@@ -30,7 +30,35 @@ A fully automated alert + execution system with three layers:
   - Lot size in units and lots
   - Current account balance and daily P&L
 - Telegram fires again when stop or TP is hit with final P&L
-- Safety limits: max 3 trades/day, max 6% daily loss — system halts if hit
+- Safety limits: max 6% daily loss — system halts if hit
+- No per-day trade limit — executes every confirmed signal
+
+### Forex strategy routing (1h bars)
+Each pair is assigned the strategy with the best 90-day backtest result:
+
+**Williams Alligator + RSI** — Lips>Teeth>Jaw + RSI crosses 50:
+| Pair | Win Rate | Trades |
+|------|----------|--------|
+| AUDCAD | 61.1% | 18 |
+| USDCAD | 53.3% | 30 |
+| CADJPY | 50.0% | 28 |
+| EURUSD | 48.1% | 27 |
+| AUDUSD | 44.8% | 29 |
+| GBPJPY | 42.9% | 21 |
+
+**RSI Crossover** — RSI crosses above 40 (long) or below 60 (short):
+| Pair | Win Rate | Profit Factor |
+|------|----------|--------------|
+| EURJPY | 68.3% | 1.21 |
+| USDJPY | 66.7% | 1.51 |
+| USDCHF | 66.7% | 1.35 |
+| GBPUSD | 63.0% | 1.28 |
+| NZDJPY | 52.8% | 0.93 |
+| NZDUSD | 51.9% | 0.97 |
+
+Both strategies were backtested on 1h bars, 90 days (Feb–Apr + recent).
+15m was tested and rejected — Alligator WR dropped 10–33% on most pairs.
+1h is the confirmed optimal timeframe for both strategies.
 
 ### Phase 2 — Futures (when Oanda balance ≥ $500)
 - System detects the balance crossing $500 automatically and switches modes
@@ -42,15 +70,15 @@ A fully automated alert + execution system with three layers:
 AUTO_TRADE_ENABLED=true   # master switch — false = alerts only, no orders
 OANDA_PAPER=true          # true = practice account, false = live
 RISK_PCT=2                # risk per trade as % of available balance
-MAX_TRADES_PER_DAY=3      # hard daily trade limit
 MAX_DAILY_LOSS_PCT=6      # halt trading if daily loss exceeds this %
+# Note: no per-day trade limit — system trades every confirmed signal
 ```
 
 ## What this system does NOT do
 - Does not suggest position sizing to me — it calculates it automatically
 - Does not ask about account size — it reads live balance from Oanda
 - Does not place futures trades until Oanda balance reaches $500
-- Does not override safety limits (daily loss, trade count)
+- Does not override safety limits (daily loss limit only — no trade count limit)
 
 ## Project structure
 ```
@@ -78,7 +106,8 @@ trading-system/
 ├── alerts/
 │   ├── futures_alerts.py        ← main loop: monitors all symbols, places orders
 │   ├── alert_engine.py          ← scoring, indicators, S/R levels, candle patterns
-│   ├── strategy_engine.py       ← Gap Fill, VWAP Pullback, ORB, EMA Pullback
+│   ├── strategy_engine.py       ← Gap Fill, VWAP Pullback, ORB (futures)
+│   │                               Alligator+RSI, RSI Crossover, EMA Pullback (forex)
 │   └── notifier.py              ← Telegram + terminal alerts + alerts_log.json
 ├── brokers/
 │   ├── oanda_client.py          ← Oanda v20 REST: order placement, lot sizing,
@@ -432,7 +461,7 @@ Sections:
 | `/futures-scan` | Scan all 8 micros, rank by score and setup quality |
 | `/stock-scan` | Scan stock watchlist, rank by score and setup quality |
 | `/register-position MES long 5615 stop=5578 tp1=5670 tp2=5720` | Register open position for exit monitoring |
-| `/strategies` | Full strategy reference — Gap Fill, VWAP Pullback, ORB, EMA Pullback with conditions, levels, and backtest results |
+| `/strategies` | Full strategy reference — Gap Fill, VWAP Pullback, ORB (futures); Alligator+RSI, RSI Crossover (forex) with conditions, levels, and backtest results |
 | `/rr-calculator MES 5200 5192 250` | Calculate exact R:R, TP1/TP2, and position sizing for any trade |
 | `/account-plan 250` | Account requirements, margin breakdown, forex vs futures guide, growth roadmap |
 
