@@ -625,8 +625,8 @@ class ForexStrategy:
         if ema_9 <= ema_21:
             return None
 
-        # Condition 3: ADX >= 20 — don't trade in choppy/ranging markets
-        if adx < 20:
+        # Condition 3: ADX >= 25 — require a clear trend, not a borderline one
+        if adx < 25:
             return None
 
         if len(bars) < 3:
@@ -651,15 +651,12 @@ class ForexStrategy:
         if not (touched_zone or tapped_ema21):
             return None
 
-        # Condition 5: RSI 35–65
-        if not (35 <= rsi <= 65):
+        # Condition 5: RSI 42–62 — healthy pullback, not oversold/overbought
+        if not (42 <= rsi <= 62):
             return None
 
-        # Condition 6: MACD positive OR rising (curr > prev)
-        # Rising-but-negative = early momentum turn at the level
-        macd_rising = macd > macd_p and (macd_p != 0 and macd > macd_p * 0.95)
-        macd_ok = macd > 0 or macd_rising
-        if not macd_ok:
+        # Condition 6: MACD histogram must be positive — momentum confirmed, not just turning
+        if macd <= 0:
             return None
 
         # Condition 7: bullish candle (engulfing, hammer, dragonfly, marubozu)

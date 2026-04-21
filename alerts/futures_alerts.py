@@ -446,9 +446,6 @@ def check_symbol(symbol: str, test_mode: bool = False) -> dict:
         fire_alert(msg, alert_type='ENTRY', symbol=symbol)
         result['alerts_fired'].append('ENTRY')
 
-        # Auto-execute on ENTRY signal
-        _auto_execute(symbol, direction, price, stop, tp1, score)
-
     elif setup_met and not _already_alerted(symbol, 'SETUP', hours=4):
         msg = format_alert_message(
             alert_type='SETUP', symbol=symbol, direction=direction,
@@ -518,6 +515,10 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
     if sig is None:
         return
 
+    # Score gate: only execute when conviction is high (±7+), alert-only below that
+    current_score = abs(result.get('score', {}).get('total', 0))
+    score_ok = current_score >= 7
+
     cooldown_type = f'STRATEGY_{sig.strategy}'
     if _already_alerted(symbol, cooldown_type, hours=4):
         return
@@ -525,7 +526,10 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
     msg = format_strategy_entry_alert(sig, levels=levels)
     fire_alert(msg, alert_type=cooldown_type, symbol=symbol)
     result['alerts_fired'].append(cooldown_type)
-    print(f"  [{symbol}] Strategy signal: {sig.strategy} — entry {sig.entry}")
+    print(f"  [{symbol}] Strategy signal: {sig.strategy} score={current_score} {'→ EXECUTING' if score_ok else '→ alert only (score<7)'}")
+
+    if not score_ok:
+        return
 
     # Auto-execute via broker (only if AUTO_TRADE_ENABLED=true and credentials set)
     if is_futures:
