@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from providers import tradingview_provider
-from alerts.notifier import fire_alert, get_recent_alerts
+from alerts.notifier import fire_alert, log_alert, get_recent_alerts
 from alerts.alert_engine import (
     FUTURES_CONFIG, FOREX_CONFIG,
     get_live_indicators,
@@ -484,6 +484,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                         tp1=gf_sig.tp1,
                         strategy=gf_sig.strategy,
                     )
+                    log_alert(cooldown_key, gf_sig.symbol)
                     result['alerts_fired'].append(cooldown_key)
             return   # gap fill takes priority — don't also fire VWAP/ORB at open
 
@@ -506,7 +507,8 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
 
     print(f"  [{symbol}] Strategy signal: {sig.strategy} → attempting execution")
 
-    # Execute — Telegram fires inside place_order/place_bracket_order on fill
+    # Execute — Telegram fires inside place_order/place_bracket_order on fill.
+    # log_alert writes the cooldown entry so _already_alerted blocks re-fires.
     if is_futures:
         if _tradovate.is_safe_to_trade():
             _tradovate.place_bracket_order(
@@ -518,6 +520,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 tp1=sig.tp1,
                 strategy=sig.strategy,
             )
+            log_alert(cooldown_type, sig.symbol)
             result['alerts_fired'].append(cooldown_type)
     else:
         if _oanda.is_safe_to_trade():
@@ -530,6 +533,7 @@ def _check_strategy_signal(symbol: str, levels: list, result: dict) -> None:
                 strategy=sig.strategy,
                 order_type="MARKET",
             )
+            log_alert(cooldown_type, sig.symbol)
             result['alerts_fired'].append(cooldown_type)
 
 

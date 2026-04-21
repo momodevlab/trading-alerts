@@ -139,6 +139,26 @@ def fire_alert(message: str, alert_type: str = "INFO", symbol: str = "") -> None
     _save_log(log)
 
 
+def log_alert(alert_type: str, symbol: str) -> None:
+    """Write a cooldown entry to alerts_log.json without sending Telegram."""
+    try:
+        import zoneinfo
+        et = zoneinfo.ZoneInfo("America/New_York")
+        now_et = datetime.now(timezone.utc).astimezone(et)
+    except ImportError:
+        now_et = datetime.now(timezone.utc)
+
+    entry = {
+        "timestamp": now_et.isoformat(),
+        "type": alert_type,
+        "symbol": symbol,
+        "message": "",
+    }
+    log = _load_log()
+    log.append(entry)
+    _save_log(log)
+
+
 def get_recent_alerts(symbol: str = "", hours: float = 4.0) -> list:
     """Return alerts for a symbol fired within the last N hours."""
     from datetime import timedelta
